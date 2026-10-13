@@ -1,0 +1,1507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#22503C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Caddie">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<title>Caddie — my golf game</title>
+<style>/* required styles */
+
+.leaflet-pane,
+.leaflet-tile,
+.leaflet-marker-icon,
+.leaflet-marker-shadow,
+.leaflet-tile-container,
+.leaflet-pane > svg,
+.leaflet-pane > canvas,
+.leaflet-zoom-box,
+.leaflet-image-layer,
+.leaflet-layer {
+	position: absolute;
+	left: 0;
+	top: 0;
+	}
+.leaflet-container {
+	overflow: hidden;
+	}
+.leaflet-tile,
+.leaflet-marker-icon,
+.leaflet-marker-shadow {
+	-webkit-user-select: none;
+	   -moz-user-select: none;
+	        user-select: none;
+	  -webkit-user-drag: none;
+	}
+/* Prevents IE11 from highlighting tiles in blue */
+.leaflet-tile::selection {
+	background: transparent;
+}
+/* Safari renders non-retina tile on retina better with this, but Chrome is worse */
+.leaflet-safari .leaflet-tile {
+	image-rendering: -webkit-optimize-contrast;
+	}
+/* hack that prevents hw layers "stretching" when loading new tiles */
+.leaflet-safari .leaflet-tile-container {
+	width: 1600px;
+	height: 1600px;
+	-webkit-transform-origin: 0 0;
+	}
+.leaflet-marker-icon,
+.leaflet-marker-shadow {
+	display: block;
+	}
+/* .leaflet-container svg: reset svg max-width decleration shipped in Joomla! (joomla.org) 3.x */
+/* .leaflet-container img: map is broken in FF if you have max-width: 100% on tiles */
+.leaflet-container .leaflet-overlay-pane svg {
+	max-width: none !important;
+	max-height: none !important;
+	}
+.leaflet-container .leaflet-marker-pane img,
+.leaflet-container .leaflet-shadow-pane img,
+.leaflet-container .leaflet-tile-pane img,
+.leaflet-container img.leaflet-image-layer,
+.leaflet-container .leaflet-tile {
+	max-width: none !important;
+	max-height: none !important;
+	width: auto;
+	padding: 0;
+	}
+
+.leaflet-container img.leaflet-tile {
+	/* See: https://bugs.chromium.org/p/chromium/issues/detail?id=600120 */
+	mix-blend-mode: plus-lighter;
+}
+
+.leaflet-container.leaflet-touch-zoom {
+	-ms-touch-action: pan-x pan-y;
+	touch-action: pan-x pan-y;
+	}
+.leaflet-container.leaflet-touch-drag {
+	-ms-touch-action: pinch-zoom;
+	/* Fallback for FF which doesn't support pinch-zoom */
+	touch-action: none;
+	touch-action: pinch-zoom;
+}
+.leaflet-container.leaflet-touch-drag.leaflet-touch-zoom {
+	-ms-touch-action: none;
+	touch-action: none;
+}
+.leaflet-container {
+	-webkit-tap-highlight-color: transparent;
+}
+.leaflet-container a {
+	-webkit-tap-highlight-color: rgba(51, 181, 229, 0.4);
+}
+.leaflet-tile {
+	filter: inherit;
+	visibility: hidden;
+	}
+.leaflet-tile-loaded {
+	visibility: inherit;
+	}
+.leaflet-zoom-box {
+	width: 0;
+	height: 0;
+	-moz-box-sizing: border-box;
+	     box-sizing: border-box;
+	z-index: 800;
+	}
+/* workaround for https://bugzilla.mozilla.org/show_bug.cgi?id=888319 */
+.leaflet-overlay-pane svg {
+	-moz-user-select: none;
+	}
+
+.leaflet-pane         { z-index: 400; }
+
+.leaflet-tile-pane    { z-index: 200; }
+.leaflet-overlay-pane { z-index: 400; }
+.leaflet-shadow-pane  { z-index: 500; }
+.leaflet-marker-pane  { z-index: 600; }
+.leaflet-tooltip-pane   { z-index: 650; }
+.leaflet-popup-pane   { z-index: 700; }
+
+.leaflet-map-pane canvas { z-index: 100; }
+.leaflet-map-pane svg    { z-index: 200; }
+
+.leaflet-vml-shape {
+	width: 1px;
+	height: 1px;
+	}
+.lvml {
+	behavior: url(#default#VML);
+	display: inline-block;
+	position: absolute;
+	}
+
+
+/* control positioning */
+
+.leaflet-control {
+	position: relative;
+	z-index: 800;
+	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
+	pointer-events: auto;
+	}
+.leaflet-top,
+.leaflet-bottom {
+	position: absolute;
+	z-index: 1000;
+	pointer-events: none;
+	}
+.leaflet-top {
+	top: 0;
+	}
+.leaflet-right {
+	right: 0;
+	}
+.leaflet-bottom {
+	bottom: 0;
+	}
+.leaflet-left {
+	left: 0;
+	}
+.leaflet-control {
+	float: left;
+	clear: both;
+	}
+.leaflet-right .leaflet-control {
+	float: right;
+	}
+.leaflet-top .leaflet-control {
+	margin-top: 10px;
+	}
+.leaflet-bottom .leaflet-control {
+	margin-bottom: 10px;
+	}
+.leaflet-left .leaflet-control {
+	margin-left: 10px;
+	}
+.leaflet-right .leaflet-control {
+	margin-right: 10px;
+	}
+
+
+/* zoom and fade animations */
+
+.leaflet-fade-anim .leaflet-popup {
+	opacity: 0;
+	-webkit-transition: opacity 0.2s linear;
+	   -moz-transition: opacity 0.2s linear;
+	        transition: opacity 0.2s linear;
+	}
+.leaflet-fade-anim .leaflet-map-pane .leaflet-popup {
+	opacity: 1;
+	}
+.leaflet-zoom-animated {
+	-webkit-transform-origin: 0 0;
+	    -ms-transform-origin: 0 0;
+	        transform-origin: 0 0;
+	}
+svg.leaflet-zoom-animated {
+	will-change: transform;
+}
+
+.leaflet-zoom-anim .leaflet-zoom-animated {
+	-webkit-transition: -webkit-transform 0.25s cubic-bezier(0,0,0.25,1);
+	   -moz-transition:    -moz-transform 0.25s cubic-bezier(0,0,0.25,1);
+	        transition:         transform 0.25s cubic-bezier(0,0,0.25,1);
+	}
+.leaflet-zoom-anim .leaflet-tile,
+.leaflet-pan-anim .leaflet-tile {
+	-webkit-transition: none;
+	   -moz-transition: none;
+	        transition: none;
+	}
+
+.leaflet-zoom-anim .leaflet-zoom-hide {
+	visibility: hidden;
+	}
+
+
+/* cursors */
+
+.leaflet-interactive {
+	cursor: pointer;
+	}
+.leaflet-grab {
+	cursor: -webkit-grab;
+	cursor:    -moz-grab;
+	cursor:         grab;
+	}
+.leaflet-crosshair,
+.leaflet-crosshair .leaflet-interactive {
+	cursor: crosshair;
+	}
+.leaflet-popup-pane,
+.leaflet-control {
+	cursor: auto;
+	}
+.leaflet-dragging .leaflet-grab,
+.leaflet-dragging .leaflet-grab .leaflet-interactive,
+.leaflet-dragging .leaflet-marker-draggable {
+	cursor: move;
+	cursor: -webkit-grabbing;
+	cursor:    -moz-grabbing;
+	cursor:         grabbing;
+	}
+
+/* marker & overlays interactivity */
+.leaflet-marker-icon,
+.leaflet-marker-shadow,
+.leaflet-image-layer,
+.leaflet-pane > svg path,
+.leaflet-tile-container {
+	pointer-events: none;
+	}
+
+.leaflet-marker-icon.leaflet-interactive,
+.leaflet-image-layer.leaflet-interactive,
+.leaflet-pane > svg path.leaflet-interactive,
+svg.leaflet-image-layer.leaflet-interactive path {
+	pointer-events: visiblePainted; /* IE 9-10 doesn't have auto */
+	pointer-events: auto;
+	}
+
+/* visual tweaks */
+
+.leaflet-container {
+	background: #ddd;
+	outline-offset: 1px;
+	}
+.leaflet-container a {
+	color: #0078A8;
+	}
+.leaflet-zoom-box {
+	border: 2px dotted #38f;
+	background: rgba(255,255,255,0.5);
+	}
+
+
+/* general typography */
+.leaflet-container {
+	font-family: "Helvetica Neue", Arial, Helvetica, sans-serif;
+	font-size: 12px;
+	font-size: 0.75rem;
+	line-height: 1.5;
+	}
+
+
+/* general toolbar styles */
+
+.leaflet-bar {
+	box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+	border-radius: 4px;
+	}
+.leaflet-bar a {
+	background-color: #fff;
+	border-bottom: 1px solid #ccc;
+	width: 26px;
+	height: 26px;
+	line-height: 26px;
+	display: block;
+	text-align: center;
+	text-decoration: none;
+	color: black;
+	}
+.leaflet-bar a,
+.leaflet-control-layers-toggle {
+	background-position: 50% 50%;
+	background-repeat: no-repeat;
+	display: block;
+	}
+.leaflet-bar a:hover,
+.leaflet-bar a:focus {
+	background-color: #f4f4f4;
+	}
+.leaflet-bar a:first-child {
+	border-top-left-radius: 4px;
+	border-top-right-radius: 4px;
+	}
+.leaflet-bar a:last-child {
+	border-bottom-left-radius: 4px;
+	border-bottom-right-radius: 4px;
+	border-bottom: none;
+	}
+.leaflet-bar a.leaflet-disabled {
+	cursor: default;
+	background-color: #f4f4f4;
+	color: #bbb;
+	}
+
+.leaflet-touch .leaflet-bar a {
+	width: 30px;
+	height: 30px;
+	line-height: 30px;
+	}
+.leaflet-touch .leaflet-bar a:first-child {
+	border-top-left-radius: 2px;
+	border-top-right-radius: 2px;
+	}
+.leaflet-touch .leaflet-bar a:last-child {
+	border-bottom-left-radius: 2px;
+	border-bottom-right-radius: 2px;
+	}
+
+/* zoom control */
+
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out {
+	font: bold 18px 'Lucida Console', Monaco, monospace;
+	text-indent: 1px;
+	}
+
+.leaflet-touch .leaflet-control-zoom-in, .leaflet-touch .leaflet-control-zoom-out  {
+	font-size: 22px;
+	}
+
+
+/* layers control */
+
+.leaflet-control-layers {
+	box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+	background: #fff;
+	border-radius: 5px;
+	}
+.leaflet-control-layers-toggle {
+	background-image: url(images/layers.png);
+	width: 36px;
+	height: 36px;
+	}
+.leaflet-retina .leaflet-control-layers-toggle {
+	background-image: url(images/layers-2x.png);
+	background-size: 26px 26px;
+	}
+.leaflet-touch .leaflet-control-layers-toggle {
+	width: 44px;
+	height: 44px;
+	}
+.leaflet-control-layers .leaflet-control-layers-list,
+.leaflet-control-layers-expanded .leaflet-control-layers-toggle {
+	display: none;
+	}
+.leaflet-control-layers-expanded .leaflet-control-layers-list {
+	display: block;
+	position: relative;
+	}
+.leaflet-control-layers-expanded {
+	padding: 6px 10px 6px 6px;
+	color: #333;
+	background: #fff;
+	}
+.leaflet-control-layers-scrollbar {
+	overflow-y: scroll;
+	overflow-x: hidden;
+	padding-right: 5px;
+	}
+.leaflet-control-layers-selector {
+	margin-top: 2px;
+	position: relative;
+	top: 1px;
+	}
+.leaflet-control-layers label {
+	display: block;
+	font-size: 13px;
+	font-size: 1.08333em;
+	}
+.leaflet-control-layers-separator {
+	height: 0;
+	border-top: 1px solid #ddd;
+	margin: 5px -10px 5px -6px;
+	}
+
+/* Default icon URLs */
+.leaflet-default-icon-path { /* used only in path-guessing heuristic, see L.Icon.Default */
+	background-image: url(images/marker-icon.png);
+	}
+
+
+/* attribution and scale controls */
+
+.leaflet-container .leaflet-control-attribution {
+	background: #fff;
+	background: rgba(255, 255, 255, 0.8);
+	margin: 0;
+	}
+.leaflet-control-attribution,
+.leaflet-control-scale-line {
+	padding: 0 5px;
+	color: #333;
+	line-height: 1.4;
+	}
+.leaflet-control-attribution a {
+	text-decoration: none;
+	}
+.leaflet-control-attribution a:hover,
+.leaflet-control-attribution a:focus {
+	text-decoration: underline;
+	}
+.leaflet-attribution-flag {
+	display: inline !important;
+	vertical-align: baseline !important;
+	width: 1em;
+	height: 0.6669em;
+	}
+.leaflet-left .leaflet-control-scale {
+	margin-left: 5px;
+	}
+.leaflet-bottom .leaflet-control-scale {
+	margin-bottom: 5px;
+	}
+.leaflet-control-scale-line {
+	border: 2px solid #777;
+	border-top: none;
+	line-height: 1.1;
+	padding: 2px 5px 1px;
+	white-space: nowrap;
+	-moz-box-sizing: border-box;
+	     box-sizing: border-box;
+	background: rgba(255, 255, 255, 0.8);
+	text-shadow: 1px 1px #fff;
+	}
+.leaflet-control-scale-line:not(:first-child) {
+	border-top: 2px solid #777;
+	border-bottom: none;
+	margin-top: -2px;
+	}
+.leaflet-control-scale-line:not(:first-child):not(:last-child) {
+	border-bottom: 2px solid #777;
+	}
+
+.leaflet-touch .leaflet-control-attribution,
+.leaflet-touch .leaflet-control-layers,
+.leaflet-touch .leaflet-bar {
+	box-shadow: none;
+	}
+.leaflet-touch .leaflet-control-layers,
+.leaflet-touch .leaflet-bar {
+	border: 2px solid rgba(0,0,0,0.2);
+	background-clip: padding-box;
+	}
+
+
+/* popup */
+
+.leaflet-popup {
+	position: absolute;
+	text-align: center;
+	margin-bottom: 20px;
+	}
+.leaflet-popup-content-wrapper {
+	padding: 1px;
+	text-align: left;
+	border-radius: 12px;
+	}
+.leaflet-popup-content {
+	margin: 13px 24px 13px 20px;
+	line-height: 1.3;
+	font-size: 13px;
+	font-size: 1.08333em;
+	min-height: 1px;
+	}
+.leaflet-popup-content p {
+	margin: 17px 0;
+	margin: 1.3em 0;
+	}
+.leaflet-popup-tip-container {
+	width: 40px;
+	height: 20px;
+	position: absolute;
+	left: 50%;
+	margin-top: -1px;
+	margin-left: -20px;
+	overflow: hidden;
+	pointer-events: none;
+	}
+.leaflet-popup-tip {
+	width: 17px;
+	height: 17px;
+	padding: 1px;
+
+	margin: -10px auto 0;
+	pointer-events: auto;
+
+	-webkit-transform: rotate(45deg);
+	   -moz-transform: rotate(45deg);
+	    -ms-transform: rotate(45deg);
+	        transform: rotate(45deg);
+	}
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+	background: white;
+	color: #333;
+	box-shadow: 0 3px 14px rgba(0,0,0,0.4);
+	}
+.leaflet-container a.leaflet-popup-close-button {
+	position: absolute;
+	top: 0;
+	right: 0;
+	border: none;
+	text-align: center;
+	width: 24px;
+	height: 24px;
+	font: 16px/24px Tahoma, Verdana, sans-serif;
+	color: #757575;
+	text-decoration: none;
+	background: transparent;
+	}
+.leaflet-container a.leaflet-popup-close-button:hover,
+.leaflet-container a.leaflet-popup-close-button:focus {
+	color: #585858;
+	}
+.leaflet-popup-scrolled {
+	overflow: auto;
+	}
+
+.leaflet-oldie .leaflet-popup-content-wrapper {
+	-ms-zoom: 1;
+	}
+.leaflet-oldie .leaflet-popup-tip {
+	width: 24px;
+	margin: 0 auto;
+
+	-ms-filter: "progid:DXImageTransform.Microsoft.Matrix(M11=0.70710678, M12=0.70710678, M21=-0.70710678, M22=0.70710678)";
+	filter: progid:DXImageTransform.Microsoft.Matrix(M11=0.70710678, M12=0.70710678, M21=-0.70710678, M22=0.70710678);
+	}
+
+.leaflet-oldie .leaflet-control-zoom,
+.leaflet-oldie .leaflet-control-layers,
+.leaflet-oldie .leaflet-popup-content-wrapper,
+.leaflet-oldie .leaflet-popup-tip {
+	border: 1px solid #999;
+	}
+
+
+/* div icon */
+
+.leaflet-div-icon {
+	background: #fff;
+	border: 1px solid #666;
+	}
+
+
+/* Tooltip */
+/* Base styles for the element that has a tooltip */
+.leaflet-tooltip {
+	position: absolute;
+	padding: 6px;
+	background-color: #fff;
+	border: 1px solid #fff;
+	border-radius: 3px;
+	color: #222;
+	white-space: nowrap;
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+	pointer-events: none;
+	box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+	}
+.leaflet-tooltip.leaflet-interactive {
+	cursor: pointer;
+	pointer-events: auto;
+	}
+.leaflet-tooltip-top:before,
+.leaflet-tooltip-bottom:before,
+.leaflet-tooltip-left:before,
+.leaflet-tooltip-right:before {
+	position: absolute;
+	pointer-events: none;
+	border: 6px solid transparent;
+	background: transparent;
+	content: "";
+	}
+
+/* Directions */
+
+.leaflet-tooltip-bottom {
+	margin-top: 6px;
+}
+.leaflet-tooltip-top {
+	margin-top: -6px;
+}
+.leaflet-tooltip-bottom:before,
+.leaflet-tooltip-top:before {
+	left: 50%;
+	margin-left: -6px;
+	}
+.leaflet-tooltip-top:before {
+	bottom: 0;
+	margin-bottom: -12px;
+	border-top-color: #fff;
+	}
+.leaflet-tooltip-bottom:before {
+	top: 0;
+	margin-top: -12px;
+	margin-left: -6px;
+	border-bottom-color: #fff;
+	}
+.leaflet-tooltip-left {
+	margin-left: -6px;
+}
+.leaflet-tooltip-right {
+	margin-left: 6px;
+}
+.leaflet-tooltip-left:before,
+.leaflet-tooltip-right:before {
+	top: 50%;
+	margin-top: -6px;
+	}
+.leaflet-tooltip-left:before {
+	right: 0;
+	margin-right: -12px;
+	border-left-color: #fff;
+	}
+.leaflet-tooltip-right:before {
+	left: 0;
+	margin-left: -12px;
+	border-right-color: #fff;
+	}
+
+/* Printing */
+
+@media print {
+	/* Prevent printers from removing background-images of controls. */
+	.leaflet-control {
+		-webkit-print-color-adjust: exact;
+		print-color-adjust: exact;
+		}
+	}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<style>
+  #map{height:42vh;min-height:260px;max-height:420px;border-radius:10px;border:1px solid var(--line);margin-bottom:12px;background:#dfe6d8}
+  .gpsbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .gpsbar button{flex:1 1 110px}
+  .live{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+  .live .stat .num{font-size:26px}
+  .holes{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px}
+  .holes button{width:34px;height:34px;border:1px solid var(--line);background:#fff;border-radius:6px;font:inherit;cursor:pointer}
+  .holes button.on{background:var(--green);color:#fff;border-color:var(--green)}
+  .holes button.set{border-color:var(--green);font-weight:600}
+  .me-dot{width:16px;height:16px;border-radius:50%;background:#1E73E8;border:3px solid #fff;box-shadow:0 0 0 2px #1E73E8}
+  .flag-pin{font-size:22px;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.5))}
+  .ball-pin{width:10px;height:10px;border-radius:50%;background:#fff;border:2px solid var(--ink)}
+  @media (max-width:480px){.live{grid-template-columns:1fr 1fr}}
+  :root{
+    --turf:#EEF2E8; --ink:#1B241E; --green:#22503C; --green-deep:#173A2B;
+    --sand:#D8C89B; --flag:#B9391F; --line:#C9D2C3; --muted:#5C6B60; --card:#F8FAF5;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--turf);color:var(--ink);font:16px/1.5 -apple-system,"Segoe UI",Helvetica,Arial,sans-serif}
+  h1,h2,h3,.num{font-family:Georgia,"Times New Roman",serif;font-weight:400;letter-spacing:-.01em}
+  header{background:var(--green);color:#fff;padding:22px 18px 0}
+  header h1{margin:0 0 4px;font-size:30px}
+  header p{margin:0 0 16px;opacity:.85;font-size:14px}
+  nav{display:flex;gap:4px;overflow-x:auto}
+  nav button{flex:0 0 auto;background:transparent;color:#fff;border:0;border-bottom:3px solid transparent;padding:10px 12px;font:inherit;font-size:15px;cursor:pointer;opacity:.75}
+  nav button[aria-selected="true"]{opacity:1;border-color:var(--sand)}
+  nav button:focus-visible{outline:2px solid var(--sand);outline-offset:2px}
+  main{max-width:760px;margin:0 auto;padding:20px 16px 60px}
+  section[hidden]{display:none}
+  h2{font-size:24px;margin:0 0 6px}
+  .lead{color:var(--muted);margin:0 0 18px;font-size:15px}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px}
+  label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+  input,select,textarea{font:inherit;padding:9px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);width:100%;min-width:0}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--green);outline-offset:1px;border-color:var(--green)}
+  .field{flex:1 1 130px}
+  .big input{font-family:Georgia,serif;font-size:32px;padding:6px 10px}
+  button.primary{background:var(--green);color:#fff;border:0;border-radius:6px;padding:11px 18px;font:inherit;cursor:pointer}
+  button.primary:hover{background:var(--green-deep)}
+  button.ghost{background:transparent;border:1px solid var(--line);border-radius:6px;padding:9px 14px;font:inherit;cursor:pointer;color:var(--ink)}
+  button:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+  /* bag chart */
+  .bag{list-style:none;margin:0;padding:0}
+  .bag li{display:grid;grid-template-columns:56px 1fr 74px;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line)}
+  .bag li:last-child{border-bottom:0}
+  .bag .club{font-weight:600}
+  .bar{height:14px;background:linear-gradient(90deg,var(--green),#3E8062);border-radius:3px;position:relative;transition:width .35s ease}
+  .bar::after{content:"";position:absolute;right:-1px;top:-3px;width:2px;height:20px;background:var(--flag)}
+  .bag .num{font-size:20px;text-align:right}
+  .bag .num small{font-size:12px;color:var(--muted);font-family:inherit;display:block;line-height:1.1}
+  .bag li.anchor .club{color:var(--flag)}
+  .note{font-size:13px;color:var(--muted);margin-top:10px}
+  /* planner result */
+  .result{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+  .stat .num{font-size:34px;line-height:1.1}
+  .stat span{font-size:13px;color:var(--muted)}
+  .advice{border-left:4px solid var(--sand);padding:4px 0 4px 14px;margin:10px 0}
+  .advice h3{margin:0 0 4px;font-size:18px}
+  .advice p{margin:0 0 6px;font-size:15px}
+  ul.tips{margin:6px 0 0;padding-left:18px;font-size:15px}
+  ul.tips li{margin-bottom:5px}
+  /* log */
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-weight:600;color:var(--muted);font-size:13px}
+  td.r,th.r{text-align:right}
+  .del{background:none;border:0;color:var(--flag);cursor:pointer;font-size:13px;padding:0}
+  svg.chart{width:100%;height:180px;display:block}
+  .empty{color:var(--muted);font-size:15px;padding:12px 0}
+  .coach{background:var(--green);color:#fff;border-radius:10px;padding:16px;margin-top:14px}
+  .coach h3{margin:0 0 6px;font-size:18px;color:var(--sand)}
+  .coach p{margin:0 0 8px;font-size:15px}
+  .coach p:last-child{margin:0}
+  .warn{color:var(--flag);font-size:14px}
+  @media (max-width:480px){.result{grid-template-columns:1fr} .bag li{grid-template-columns:48px 1fr 66px}}
+  @media (prefers-reduced-motion:reduce){.bar{transition:none}}
+  /* ---- app mode: bottom tab bar on phones ---- */
+  header{padding-top:calc(22px + env(safe-area-inset-top))}
+  @media (max-width:640px){
+    nav{position:fixed;left:0;right:0;bottom:0;z-index:1000;background:var(--green-deep);padding:6px 4px calc(6px + env(safe-area-inset-bottom));justify-content:space-around;gap:0;box-shadow:0 -2px 8px rgba(0,0,0,.25)}
+    nav button{flex:1 1 0;font-size:12px;padding:6px 2px;border-bottom:0;border-top:3px solid transparent;display:flex;flex-direction:column;align-items:center;gap:2px}
+    nav button[aria-selected="true"]{border-top-color:var(--sand)}
+    nav button .ic{font-size:20px;line-height:1}
+    main{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+    header{padding-bottom:12px}
+    button.primary,button.ghost{min-height:44px}
+  }
+  @media (min-width:641px){ nav button .ic{display:none} }
+  .install{display:none;background:var(--sand);color:var(--ink);padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:14px}
+  .install button{margin-left:8px}
+  .suntimes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+  .suntimes .stat .num{font-size:30px}
+  .suntimes .stat.first{border-color:var(--green);background:#EEF5EC}
+  .suntimes .stat.last{border-color:var(--flag);background:#FBEFEB}
+  svg.sun{width:100%;height:200px;display:block}
+  .sunlegend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:6px}
+  .sunlegend i{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:-1px;margin-right:4px}
+  .month{width:100%;border-collapse:collapse;font-size:13px}
+  .month th,.month td{padding:5px 4px;border-bottom:1px solid var(--line);text-align:right}
+  .month th:first-child,.month td:first-child{text-align:left}
+  @media (max-width:480px){.suntimes{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Caddie</h1>
+  <p>Your bag, your shot, your progress — built around one number you already know.</p>
+  <nav role="tablist">
+    <button role="tab" aria-selected="true" data-tab="bag"><span class="ic">🎒</span>My bag</button>
+    <button role="tab" aria-selected="false" data-tab="gps"><span class="ic">📍</span>Course</button>
+    <button role="tab" aria-selected="false" data-tab="shot"><span class="ic">🎯</span>Shot</button>
+    <button role="tab" aria-selected="false" data-tab="log"><span class="ic">📈</span>Progress</button>
+    <button role="tab" aria-selected="false" data-tab="sun"><span class="ic">🌅</span>Daylight</button>
+    <button role="tab" aria-selected="false" data-tab="drills"><span class="ic">🏌️</span>Drills</button>
+  </nav>
+</header>
+
+<main>
+<div class="install" id="installBox">Add Caddie to your home screen to use it like an app. <span id="installHint">iPhone: Share → Add to Home Screen.</span><button class="ghost" id="installBtn" hidden>Install</button></div>
+<!-- ============ BAG ============ -->
+<section id="tab-bag">
+  <h2>Distances by club</h2>
+  <p class="lead">Enter your average 7-iron carry. Every other club is estimated from the typical gaps between clubs. As you get more consistent, update the number and the whole bag moves with it.</p>
+  <div class="panel">
+    <div class="row">
+      <div class="field big" style="flex:1 1 160px">
+        <label for="seven">7-iron carry (metres)</label>
+        <input id="seven" type="number" inputmode="decimal" min="40" max="220" step="1" value="120">
+      </div>
+      <div class="field">
+        <label for="level">Consistency</label>
+        <select id="level">
+          <option value="new">Just started (±20%)</option>
+          <option value="mid">Getting there (±12%)</option>
+          <option value="steady">Steady (±7%)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="mode">Show</label>
+        <select id="mode">
+          <option value="carry">Carry</option>
+          <option value="total">Total (carry + roll on fairway)</option>
+        </select>
+      </div>
+    </div>
+    <ul class="bag" id="bagList"></ul>
+    <p class="note">The 7-iron is the anchor because it sits in the middle of the bag and is the club most beginners hit most often. Rough numbers are fine — your own dispersion is bigger than the estimate error. When you know a real distance for another club, type it over the estimate and it is kept.</p>
+  </div>
+</section>
+
+<!-- ============ GPS ============ -->
+<section id="tab-gps" hidden>
+  <h2>On the course</h2>
+  <p class="lead">Pick a Belek course, tap the map once per hole to place the flag, then walk. The blue dot is you; the distance to the flag updates as you move. Stand over the ball and press "Ball is here" before each shot — the app measures every shot and learns your real club distances.</p>
+  <div class="panel">
+    <div class="row">
+      <div class="field" style="flex:2 1 200px">
+        <label for="course">Course</label>
+        <select id="course"></select>
+      </div>
+      <div class="field">
+        <label for="unitSel">Satellite</label>
+        <select id="unitSel"><option value="sat">Satellite</option><option value="map">Street map</option></select>
+      </div>
+    </div>
+    <div class="holes" id="holes"></div>
+    <div id="map"></div>
+    <div class="live">
+      <div class="stat"><div class="num" id="dFlag">–</div><span>m to flag</span></div>
+      <div class="stat"><div class="num" id="dClub">–</div><span>club for that</span></div>
+      <div class="stat"><div class="num" id="dLast">–</div><span>m, last shot</span></div>
+    </div>
+    <div class="gpsbar">
+      <button class="primary" id="locBtn">Start GPS</button>
+      <button class="ghost" id="flagBtn">Place flag by tap</button>
+      <button class="ghost" id="centreBtn">Centre on me</button>
+    </div>
+    <div class="row">
+      <div class="field"><label for="shotClub">Club in hand</label><select id="shotClub"></select></div>
+      <div class="field"><label for="shotLie">Lie</label>
+        <select id="shotLie"><option value="tee">Tee</option><option value="fairway">Fairway</option><option value="lrough">Light rough</option><option value="hrough">Heavy rough</option><option value="fbunker">Fairway bunker</option><option value="gbunker">Greenside bunker</option></select>
+      </div>
+    </div>
+    <div class="gpsbar">
+      <button class="primary" id="ballBtn">Ball is here</button>
+      <button class="ghost" id="holedBtn">Holed out</button>
+      <button class="ghost" id="undoBtn">Undo last</button>
+    </div>
+    <p class="note" id="gpsMsg">GPS needs HTTPS or the file opened directly on the phone. Accuracy is typically 3–8 m; hold the phone still for a second before pressing "Ball is here". Flag positions you place are remembered per course.</p>
+  </div>
+
+  <div class="panel">
+    <h3 style="margin:0 0 6px;font-size:18px">This round</h3>
+    <div id="roundTable"></div>
+  </div>
+
+  <div class="panel">
+    <h3 style="margin:0 0 6px;font-size:18px">What GPS has learned about your clubs</h3>
+    <p class="note" style="margin:0 0 10px">Only full-swing shots from tee or fairway count (bunkers, rough and short pitches are excluded). Once a club has 5+ shots you can trust it more than the estimate.</p>
+    <div id="learned"></div>
+    <div class="row" style="margin-top:10px"><button class="ghost" id="applyLearned">Use these in My bag</button></div>
+  </div>
+</section>
+
+<!-- ============ SHOT ============ -->
+<section id="tab-shot" hidden>
+  <h2>Plan a shot</h2>
+  <p class="lead">Tell me where the ball is and what the conditions are. I'll adjust the distance and suggest how to play it.</p>
+  <div class="panel">
+    <div class="row">
+      <div class="field">
+        <label for="target">Distance to target (m)</label>
+        <input id="target" type="number" inputmode="decimal" min="5" max="350" step="1" value="120">
+      </div>
+      <div class="field">
+        <label for="lie">Ball lies on</label>
+        <select id="lie">
+          <option value="tee">Tee</option>
+          <option value="fairway" selected>Fairway</option>
+          <option value="lrough">Light rough</option>
+          <option value="hrough">Heavy rough</option>
+          <option value="fbunker">Fairway bunker</option>
+          <option value="gbunker">Greenside bunker</option>
+          <option value="wet">Wet / soft ground</option>
+          <option value="hardpan">Hardpan / bare</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="wind">Wind (m/s)</label>
+        <select id="wind">
+          <option value="0">Calm</option>
+          <option value="-3">Headwind 3</option><option value="-6">Headwind 6</option><option value="-9">Headwind 9</option>
+          <option value="3">Tailwind 3</option><option value="6">Tailwind 6</option><option value="9">Tailwind 9</option>
+          <option value="x">Crosswind</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="elev">Green is</label>
+        <select id="elev">
+          <option value="0">Level</option>
+          <option value="5">5 m uphill</option><option value="10">10 m uphill</option><option value="15">15 m uphill</option>
+          <option value="-5">5 m downhill</option><option value="-10">10 m downhill</option><option value="-15">15 m downhill</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="temp">Air temp (°C)</label>
+        <input id="temp" type="number" inputmode="numeric" value="22" min="-5" max="45">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="slope">Stance</label>
+        <select id="slope">
+          <option value="flat">Flat</option>
+          <option value="bal">Ball above feet</option>
+          <option value="bbl">Ball below feet</option>
+          <option value="up">Uphill lie</option>
+          <option value="down">Downhill lie</option>
+        </select>
+      </div>
+    </div>
+    <button class="primary" id="plan">Plan the shot</button>
+    <div id="planOut"></div>
+  </div>
+</section>
+
+<!-- ============ LOG ============ -->
+<section id="tab-log" hidden>
+  <h2>Progress</h2>
+  <p class="lead">After each range session or round, log a few numbers. The chart and the coach notes update from what you enter.</p>
+  <div class="panel">
+    <div class="row">
+      <div class="field"><label for="ldate">Date</label><input id="ldate" type="date"></div>
+      <div class="field"><label for="ltype">Session</label>
+        <select id="ltype"><option value="range">Range</option><option value="round9">9 holes</option><option value="round18">18 holes</option></select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field"><label for="l7">7-iron avg carry (m)</label><input id="l7" type="number" inputmode="decimal" placeholder="e.g. 118"></div>
+      <div class="field"><label for="lgood">Good strikes out of 10</label><input id="lgood" type="number" inputmode="numeric" min="0" max="10" placeholder="0–10"></div>
+      <div class="field"><label for="lscore">Score (rounds only)</label><input id="lscore" type="number" inputmode="numeric" placeholder="e.g. 58"></div>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1 1 100%"><label for="lmiss">Main miss today</label>
+        <select id="lmiss">
+          <option value="">Not sure</option>
+          <option value="top">Topped / thin</option><option value="fat">Fat / chunk (hit ground first)</option>
+          <option value="slice">Slice (curves right for right-hander)</option><option value="hook">Hook (curves left)</option>
+          <option value="shank">Shank</option><option value="push">Straight right</option><option value="pull">Straight left</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field" style="flex:1 1 100%"><label for="lnote">Notes</label><textarea id="lnote" rows="2" placeholder="What felt good, what didn't"></textarea></div>
+    </div>
+    <div class="row">
+      <button class="primary" id="addLog">Save session</button>
+      <button class="ghost" id="exportBtn">Copy data as text</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3 style="margin:0 0 8px;font-size:18px">7-iron carry over time</h3>
+    <svg class="chart" id="chart" viewBox="0 0 700 180" preserveAspectRatio="none" aria-label="7-iron carry trend"></svg>
+    <div id="logTable"></div>
+  </div>
+  <div class="coach" id="coachBox"></div>
+</section>
+
+<!-- ============ SUN ============ -->
+<section id="tab-sun" hidden>
+  <h2>Daylight and tee times</h2>
+  <p class="lead">Pick a course and a date. The first and last tee time are worked out from the sun at that exact spot — no internet needed.</p>
+  <div class="panel">
+    <div class="row">
+      <div class="field" style="flex:2 1 200px"><label for="sunCourse">Course</label><select id="sunCourse"></select></div>
+      <div class="field"><label for="sunDate">Date</label><input id="sunDate" type="date"></div>
+      <div class="field"><label for="roundLen">Round length</label>
+        <select id="roundLen"><option value="4.5">4 h 30 (18 holes)</option><option value="4">4 h 00 (quick 18)</option><option value="5">5 h 00 (slow / buggy queue)</option><option value="2.25">2 h 15 (9 holes)</option></select>
+      </div>
+    </div>
+    <div class="suntimes">
+      <div class="stat first"><div class="num" id="firstTee">–</div><span>first tee (civil dawn — you can see the ball)</span></div>
+      <div class="stat last"><div class="num" id="lastTee">–</div><span>last tee to finish by sunset</span></div>
+      <div class="stat"><div class="num" id="sunrise">–</div><span>sunrise</span></div>
+      <div class="stat"><div class="num" id="sunset">–</div><span>sunset</span></div>
+    </div>
+    <svg class="sun" id="sunChart" viewBox="0 0 700 200" preserveAspectRatio="none" aria-label="Sun elevation through the day"></svg>
+    <div class="sunlegend"><span><i style="background:#D8C89B"></i>playable daylight</span><span><i style="background:#22503C"></i>sun above 45° — best scoring light</span><span><i style="background:#B9391F"></i>last round</span></div>
+    <div id="sunAdvice"></div>
+  </div>
+  <div class="panel">
+    <h3 style="margin:0 0 8px;font-size:18px">Rest of the month at a glance</h3>
+    <table class="month" id="monthTable"></table>
+  </div>
+</section>
+
+<!-- ============ DRILLS ============ -->
+<section id="tab-drills" hidden>
+  <h2>Drills for consistent contact</h2>
+  <p class="lead">Distance is a by-product of clean contact. Work on these in this order; don't chase yards until strikes are steady.</p>
+  <div class="panel">
+    <div class="advice"><h3>1. Towel behind the ball</h3><p>Lay a folded towel about 15 cm behind the ball. Hit half-swing 8-irons without touching the towel. This kills the fat shot and teaches you to strike ball first, then turf.</p></div>
+    <div class="advice"><h3>2. Nine-to-three swings</h3><p>Hands go to 9 o'clock on the backswing, 3 o'clock on the follow-through. 20 balls with a 9-iron. Most of your swing faults show up in the long swing — the short swing fixes the sequence.</p></div>
+    <div class="advice"><h3>3. Feet-together drill</h3><p>Stand with feet touching and hit 3/4 shots. If you lose balance you are swinging with your arms and shoulders instead of turning. Balance first, speed later.</p></div>
+    <div class="advice"><h3>4. One club, one target, 10 balls</h3><p>Same club, same target, and count good strikes out of 10. That number is what you log in Progress. It matters more than how far the best one went.</p></div>
+    <div class="advice"><h3>5. Alignment sticks</h3><p>One stick on the ground along your feet, one at the target line. Beginners aim 10–20 m right without knowing it and then "fix" it with a bad swing.</p></div>
+    <p class="note">Session shape: 10 balls warm-up with a wedge, 30 balls on one drill, 20 balls to a target with your 7-iron (this is your logging number), 10 wedges to finish. About 70 balls — more than that and quality drops.</p>
+  </div>
+</section>
+</main>
+
+<script>
+/* ---------- PWA: service worker + install prompt ---------- */
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(()=>{}); }
+let deferredPrompt=null;
+const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+if(!standalone){ document.getElementById("installBox").style.display="block"; }
+window.addEventListener("beforeinstallprompt",e=>{ e.preventDefault(); deferredPrompt=e;
+  document.getElementById("installHint").textContent=""; const b=document.getElementById("installBtn"); b.hidden=false;
+  b.addEventListener("click",async()=>{ deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; b.hidden=true; }); });
+window.addEventListener("appinstalled",()=>{ document.getElementById("installBox").style.display="none"; });
+/* localStorage fallback when artifact storage isn't present (hosted PWA) */
+if(!window.storage){ window.storage={ get:async k=>{ const v=localStorage.getItem(k); return v==null?null:{value:v}; }, set:async(k,v)=>localStorage.setItem(k,v) }; }
+/* ---------- club model: ratio of carry vs 7-iron, plus roll on fairway (%) ---------- */
+const CLUBS = [
+  {k:"Dr", name:"Driver", r:1.60, roll:0.12},
+  {k:"3W", name:"3-wood", r:1.46, roll:0.10},
+  {k:"5W", name:"5-wood", r:1.35, roll:0.09},
+  {k:"4H", name:"4-hybrid", r:1.27, roll:0.08},
+  {k:"5i", name:"5-iron", r:1.15, roll:0.06},
+  {k:"6i", name:"6-iron", r:1.07, roll:0.05},
+  {k:"7i", name:"7-iron", r:1.00, roll:0.04},
+  {k:"8i", name:"8-iron", r:0.92, roll:0.03},
+  {k:"9i", name:"9-iron", r:0.85, roll:0.02},
+  {k:"PW", name:"Pitching wedge", r:0.77, roll:0.02},
+  {k:"GW", name:"Gap wedge", r:0.68, roll:0.01},
+  {k:"SW", name:"Sand wedge", r:0.58, roll:0.01},
+  {k:"LW", name:"Lob wedge", r:0.47, roll:0.00},
+];
+const LEVEL_SPREAD = {new:0.20, mid:0.12, steady:0.07};
+
+const state = { seven:120, level:"new", mode:"carry", overrides:{}, log:[],
+  course:"carya", hole:1, flags:{}, shots:[], round:{course:null, date:null} };
+
+/* ---------- storage (persists in artifact storage when available) ---------- */
+async function load(){
+  try{
+    if(window.storage){
+      const r = await window.storage.get("caddie-state", false);
+      if(r && r.value){ Object.assign(state, JSON.parse(r.value)); }
+    }
+  }catch(e){ /* first run or storage unavailable */ }
+}
+async function save(){
+  try{ if(window.storage) await window.storage.set("caddie-state", JSON.stringify(state), false); }catch(e){}
+}
+
+/* ---------- bag ---------- */
+function carryOf(club){
+  if(state.overrides[club.k]) return state.overrides[club.k];
+  return Math.round(state.seven * club.r);
+}
+function renderBag(){
+  const list = document.getElementById("bagList");
+  const spread = LEVEL_SPREAD[state.level];
+  const maxD = state.seven * 1.6 * 1.12;
+  list.innerHTML = "";
+  CLUBS.forEach(c=>{
+    const carry = carryOf(c);
+    const total = Math.round(carry*(1+c.roll));
+    const shown = state.mode==="carry" ? carry : total;
+    const lo = Math.round(shown*(1-spread)), hi = Math.round(shown*(1+spread));
+    const li = document.createElement("li");
+    if(c.k==="7i") li.className="anchor";
+    li.innerHTML = `<span class="club">${c.k}</span>
+      <div><div class="bar" style="width:${Math.max(6,(shown/maxD)*100)}%"></div></div>
+      <div class="num"><input type="number" value="${shown}" data-k="${c.k}" data-total="${state.mode==='total'}" style="font-family:Georgia,serif;font-size:20px;padding:2px 4px;text-align:right;border-color:transparent;background:transparent" aria-label="${c.name} distance"><small>${lo}–${hi} m</small></div>`;
+    list.appendChild(li);
+  });
+  list.querySelectorAll("input").forEach(inp=>{
+    inp.addEventListener("change",e=>{
+      const k=e.target.dataset.k, club=CLUBS.find(c=>c.k===k);
+      let v=parseFloat(e.target.value);
+      if(!v||v<10){ delete state.overrides[k]; }
+      else{ if(state.mode==="total") v = v/(1+club.roll); state.overrides[k]=Math.round(v); }
+      if(k==="7i"){ state.seven = state.overrides["7i"]||state.seven; delete state.overrides["7i"]; document.getElementById("seven").value=state.seven; }
+      save(); renderBag();
+    });
+  });
+}
+document.getElementById("seven").addEventListener("input",e=>{ const v=parseFloat(e.target.value); if(v>=40&&v<=220){ state.seven=v; save(); renderBag(); }});
+document.getElementById("level").addEventListener("change",e=>{ state.level=e.target.value; save(); renderBag(); });
+document.getElementById("mode").addEventListener("change",e=>{ state.mode=e.target.value; save(); renderBag(); });
+
+/* ---------- shot planner ---------- */
+const LIES = {
+  tee:     {f:1.03, title:"From the tee", tips:["Tee it so half the ball is above the crown for driver; low, almost on the ground, for irons.","Ball just inside the lead heel for driver, middle of stance for irons.","Pick a small target in the distance, not just 'the fairway'."]},
+  fairway: {f:1.00, title:"Clean fairway lie", tips:["Ball first, turf second — a shallow divot after the ball is the goal.","Hold your finish for two seconds; if you can't, you swung too hard.","Commit to the club. Indecision costs more distance than a wrong club."]},
+  lrough:  {f:0.93, title:"Light rough", tips:["Grass gets between face and ball, so expect less spin and a possible 'flyer' that goes further and runs. Plan for less carry, more roll.","Ball a touch back in stance, steeper attack, firm grip so the club doesn't twist.","Take one more club than the number and swing normally."]},
+  hrough:  {f:0.78, title:"Heavy rough", tips:["Priority is getting back to short grass, not reaching the green.","Use a wedge or 9-iron: loft gets the ball out. Long irons and hybrids get caught.","Open the face slightly, grip firmly, swing steep and hard through the grass. Accept 60–80% distance."]},
+  fbunker: {f:0.92, title:"Fairway bunker", tips:["Ball first, sand second. Dig your feet in only a little and grip down the same amount.","Ball slightly forward, quiet legs — pick it clean off the top.","Take one more club and swing at 80%. If the lip is high, loft over the lip beats distance every time."]},
+  gbunker: {f:0.35, title:"Greenside bunker", tips:["Distance is mostly irrelevant here: open the face, aim to enter the sand 3–5 cm behind the ball and splash the sand onto the green.","Swing long and accelerate through — deceleration leaves it in the bunker.","Sand wedge for soft sand, gap or pitching wedge for firm, wet sand."]},
+  wet:     {f:0.96, title:"Wet / soft ground", tips:["Little roll and a fat shot is punishing. Ball slightly back, weight a bit more on the lead foot.","Play for carry only: pick the club whose carry number reaches the target.","Sweep rather than dig — a small divot is fine, a deep one kills the shot."]},
+  hardpan: {f:1.00, title:"Hardpan / bare ground", tips:["Contact must be ball first — the club will bounce on hard ground if you hit behind it.","Ball back in stance, hands ahead, punch it with a less lofted club and let it run.","Avoid the sand wedge here; the bounce skids and you thin it."]},
+};
+const STANCE = {
+  flat:null,
+  bal:"Ball above your feet: the ball will curve left (right-hander). Aim right, grip down, swing a little flatter.",
+  bbl:"Ball below your feet: it tends to go right. Aim left, bend more from the hips, keep balance — take one more club and swing easy.",
+  up:"Uphill lie: adds loft, so the ball flies higher and shorter. Take one more club, shoulders parallel to the slope, ball slightly forward.",
+  down:"Downhill lie: takes loft off, ball flies lower and further. Take one less club, ball back, chase the club down the slope after impact.",
+};
+function planShot(){
+  const target = parseFloat(document.getElementById("target").value)||0;
+  const lieK = document.getElementById("lie").value, lie = LIES[lieK];
+  const windV = document.getElementById("wind").value;
+  const elev = parseFloat(document.getElementById("elev").value);
+  const temp = parseFloat(document.getElementById("temp").value)||20;
+  const stance = document.getElementById("slope").value;
+
+  // effective distance the ball must "play"
+  let plays = target;
+  const notes = [];
+  if(windV!=="x"){
+    const w = parseFloat(windV);
+    if(w<0){ plays *= 1 + Math.abs(w)*0.022; notes.push(`Headwind ${Math.abs(w)} m/s makes it play about ${Math.round(target*Math.abs(w)*0.022)} m longer. Swing easier, not harder — hard swings add spin and balloon.`); }
+    if(w>0){ plays *= 1 - w*0.013; notes.push(`Tailwind ${w} m/s: ball flies a bit further and rolls more; expect it to play about ${Math.round(target*w*0.013)} m shorter.`); }
+  } else notes.push("Crosswind: aim into the wind by roughly the width of the green and let it drift. Don't try to curve it against the wind yet.");
+  if(elev!==0){ plays += elev; notes.push(elev>0 ? `${elev} m uphill adds about ${elev} m.` : `${Math.abs(elev)} m downhill takes off about ${Math.abs(elev)} m.`); }
+  if(temp<18){ const p=(18-temp)*0.002; plays *= 1+p; notes.push(`Cold air (${temp}°C) costs a few metres — about ${Math.round(target*p)} m.`); }
+  if(temp>30){ plays *= 0.985; }
+  // lie factor reduces what the club can deliver, so the required carry goes up
+  const needCarry = plays / lie.f;
+
+  // pick club: smallest carry >= needCarry (ignore driver off the deck)
+  let pick = null;
+  const candidates = CLUBS.filter(c=> lieK==="tee" || c.k!=="Dr");
+  for(const c of [...candidates].reverse()){ if(carryOf(c) >= needCarry){ pick=c; break; } }
+  let over = false;
+  if(!pick){ pick = candidates[0]; over = true; }
+  const spread = LEVEL_SPREAD[state.level];
+  const delivered = Math.round(carryOf(pick)*lie.f);
+  const lo = Math.round(delivered*(1-spread)), hi=Math.round(delivered*(1+spread));
+
+  let html = `<div class="result">
+    <div class="stat"><div class="num">${Math.round(plays)} m</div><span>plays as (from ${target} m)</span></div>
+    <div class="stat"><div class="num">${pick.name}</div><span>expect ${delivered} m, likely ${lo}–${hi}</span></div>
+  </div>`;
+  if(lieK==="gbunker") html = `<div class="result"><div class="stat"><div class="num">Sand wedge</div><span>get out first, distance second</span></div><div class="stat"><div class="num">${target} m</div><span>to the flag — land it on the green, not at the pin</span></div></div>`;
+  if(over) html += `<p class="warn">Out of range for a full shot from here. Play a lay-up to a distance you like for the next shot (a full wedge, for example) instead of forcing it.</p>`;
+  html += `<div class="advice"><h3>${lie.title}</h3><ul class="tips">${lie.tips.map(t=>`<li>${t}</li>`).join("")}</ul></div>`;
+  if(STANCE[stance]) html += `<div class="advice"><h3>Stance</h3><p>${STANCE[stance]}</p></div>`;
+  if(notes.length) html += `<div class="advice"><h3>Conditions</h3><ul class="tips">${notes.map(t=>`<li>${t}</li>`).join("")}</ul></div>`;
+  if(state.level==="new") html += `<p class="note">At your stage, a club that reaches the front of the green beats one that reaches the flag: your misses are short far more often than long. When in doubt, take the longer club and swing smooth.</p>`;
+  document.getElementById("planOut").innerHTML = html;
+}
+document.getElementById("plan").addEventListener("click",planShot);
+
+/* ---------- log ---------- */
+const MISS_ADVICE = {
+  top:"Topped shots come from lifting up or hanging back on the trail foot. Towel drill and feet-together drill. Feel your chest stay down through impact.",
+  fat:"Fat shots mean the low point of the swing is behind the ball. Weight forward at setup (60% lead foot), towel drill, and finish with your belt buckle at the target.",
+  slice:"A slice is an open face relative to the path. Check grip first: you should see two to three knuckles of the lead hand. Then feel the club release — toe passing heel — through impact.",
+  hook:"Hooks: usually a strong grip or a very in-to-out path. Weaken the grip slightly and feel the chest keep turning through the shot so the hands don't flip.",
+  shank:"Shanks are heel contact, often from standing too close or lunging forward. Set up with the ball on the toe, put a headcover just outside the ball and miss it.",
+  push:"Straight right is path, not face. Alignment sticks; make sure shoulders aren't aimed right. Then feel the trail elbow stay close to the body coming down.",
+  pull:"Straight left is often an over-the-top move. Alignment sticks, then the 9-to-3 drill feeling the club drop behind you before you turn through.",
+};
+function addLog(){
+  const date=document.getElementById("ldate").value||new Date().toISOString().slice(0,10);
+  const e={ date, type:document.getElementById("ltype").value,
+    seven:parseFloat(document.getElementById("l7").value)||null,
+    good:parseInt(document.getElementById("lgood").value),
+    score:parseInt(document.getElementById("lscore").value)||null,
+    miss:document.getElementById("lmiss").value, note:document.getElementById("lnote").value.trim() };
+  if(isNaN(e.good)) e.good=null;
+  if(!e.seven && e.good===null && !e.score){ alert("Enter at least a 7-iron carry, strikes out of 10, or a score."); return; }
+  state.log.push(e); state.log.sort((a,b)=>a.date.localeCompare(b.date));
+  if(e.seven){ state.seven=e.seven; document.getElementById("seven").value=e.seven; renderBag(); }
+  save(); renderLog();
+  ["l7","lgood","lscore","lnote"].forEach(id=>document.getElementById(id).value="");
+  document.getElementById("lmiss").value="";
+}
+document.getElementById("addLog").addEventListener("click",addLog);
+document.getElementById("exportBtn").addEventListener("click",()=>{
+  const txt = state.log.map(e=>`${e.date}\t${e.type}\t7i ${e.seven??"-"}m\tstrikes ${e.good??"-"}/10\tscore ${e.score??"-"}\t${e.miss||""}\t${e.note||""}`).join("\n");
+  navigator.clipboard?.writeText(txt).then(()=>alert("Copied. Paste it into Notes or Sheets to keep a backup.")).catch(()=>prompt("Copy this:",txt));
+});
+function renderChart(){
+  const svg=document.getElementById("chart"); const pts=state.log.filter(e=>e.seven);
+  if(pts.length<2){ svg.innerHTML=`<text x="10" y="95" font-size="14" fill="#5C6B60">Log two sessions with a 7-iron carry to see the trend.</text>`; return; }
+  const W=700,H=180,pad=28; const vals=pts.map(p=>p.seven);
+  const min=Math.min(...vals)-5, max=Math.max(...vals)+5;
+  const x=i=>pad+ i*(W-2*pad)/(pts.length-1), y=v=>H-pad-(v-min)/(max-min)*(H-2*pad);
+  let d=pts.map((p,i)=>`${i?"L":"M"}${x(i)},${y(p.seven)}`).join(" ");
+  let s=`<line x1="${pad}" y1="${H-pad}" x2="${W-pad}" y2="${H-pad}" stroke="#C9D2C3"/>`;
+  s+=`<path d="${d}" fill="none" stroke="#22503C" stroke-width="2.5"/>`;
+  pts.forEach((p,i)=>{ s+=`<circle cx="${x(i)}" cy="${y(p.seven)}" r="4" fill="#B9391F"/><text x="${x(i)}" y="${y(p.seven)-9}" font-size="12" text-anchor="middle" fill="#1B241E">${p.seven}</text>`; });
+  s+=`<text x="${pad}" y="${H-8}" font-size="11" fill="#5C6B60">${pts[0].date}</text><text x="${W-pad}" y="${H-8}" font-size="11" text-anchor="end" fill="#5C6B60">${pts[pts.length-1].date}</text>`;
+  svg.innerHTML=s;
+}
+function renderLog(){
+  renderChart();
+  const box=document.getElementById("logTable");
+  if(!state.log.length){ box.innerHTML=`<p class="empty">No sessions yet. Save your first one above.</p>`; }
+  else{
+    box.innerHTML=`<table><thead><tr><th>Date</th><th>Type</th><th class="r">7i</th><th class="r">Strikes</th><th class="r">Score</th><th>Miss</th><th></th></tr></thead><tbody>`+
+      [...state.log].reverse().map((e,i)=>`<tr><td>${e.date}</td><td>${e.type==="range"?"Range":e.type==="round9"?"9 holes":"18 holes"}</td><td class="r">${e.seven??"–"}</td><td class="r">${e.good??"–"}</td><td class="r">${e.score??"–"}</td><td>${e.miss?document.querySelector(`#lmiss option[value="${e.miss}"]`).textContent.split(" (")[0]:"–"}${e.note?`<br><small style="color:#5C6B60">${e.note}</small>`:""}</td><td><button class="del" data-i="${state.log.length-1-i}">remove</button></td></tr>`).join("")+`</tbody></table>`;
+    box.querySelectorAll(".del").forEach(b=>b.addEventListener("click",e=>{ state.log.splice(+e.target.dataset.i,1); save(); renderLog(); }));
+  }
+  renderCoach();
+}
+function renderCoach(){
+  const c=document.getElementById("coachBox"); const L=state.log;
+  if(!L.length){ c.innerHTML=`<h3>Coach's note</h3><p>Nothing to read yet. Your first job is not distance — it's how many of 10 balls you strike cleanly. Log that number after every session.</p>`; return; }
+  const last=L[L.length-1]; let out=[];
+  const sevens=L.filter(e=>e.seven).map(e=>e.seven);
+  if(sevens.length>=3){ const a=sevens.slice(-3), b=sevens.slice(0,Math.max(1,sevens.length-3)); const ma=a.reduce((x,y)=>x+y)/a.length, mb=b.reduce((x,y)=>x+y)/b.length;
+    const diff=Math.round(ma-mb); out.push(diff>3?`Your 7-iron has gained about ${diff} m over the recent sessions — the bag distances have moved with it.`:diff<-3?`7-iron carry is down about ${Math.abs(diff)} m lately. That's normal when you change something; keep the swing smooth and let it come back.`:`7-iron carry is stable around ${Math.round(ma)} m. Good — stability is the goal right now.`); }
+  const goods=L.filter(e=>e.good!==null).map(e=>e.good);
+  if(goods.length){ const g=goods.slice(-3); const avg=g.reduce((x,y)=>x+y)/g.length;
+    out.push(avg<4?`${avg.toFixed(1)} clean strikes out of 10. Stay on half swings and the towel drill until this reaches 5–6; full swings now just rehearse the miss.`:avg<7?`${avg.toFixed(1)} of 10 clean — contact is coming. Move to 3/4 swings and start hitting to a target rather than just 'out there'.`:`${avg.toFixed(1)} of 10 clean is solid. You can now trust the bag numbers and set Consistency to "Getting there" or "Steady".`); }
+  if(last.miss&&MISS_ADVICE[last.miss]) out.push(MISS_ADVICE[last.miss]);
+  const scores=L.filter(e=>e.score&&e.type!=="range");
+  if(scores.length>=2){ const s1=scores[scores.length-2], s2=scores[scores.length-1]; if(s1.type===s2.type) out.push(s2.score<s1.score?`Score improved from ${s1.score} to ${s2.score} on ${s2.type==="round9"?"9":"18"} holes.`:`Score went ${s1.score} → ${s2.score}. Scores bounce around a lot early on; the strike count is the better signal.`); }
+  c.innerHTML=`<h3>Coach's note</h3>`+out.map(t=>`<p>${t}</p>`).join("");
+}
+
+/* ---------- course GPS ---------- */
+/* Centre points of the Belek courses (approximate — zoom and check). Flags are placed by you, per hole. */
+const COURSES = [
+  {id:"carya",   name:"Carya Golf Club (Regnum)",          lat:36.8445, lng:31.0140},
+  {id:"montg",   name:"Montgomerie Maxx Royal",           lat:36.8625, lng:31.0390},
+  {id:"national",name:"National Golf Club",               lat:36.8490, lng:31.0410},
+  {id:"kaya",    name:"Kaya Palazzo Golf Club",           lat:36.8500, lng:31.0500},
+  {id:"titanic", name:"Titanic Golf Club",                lat:36.8530, lng:31.0540},
+  {id:"nobilis", name:"Robinson Nobilis Golf",            lat:36.8610, lng:31.0620},
+  {id:"agcsul",  name:"Antalya Golf Club — PGA Sultan",   lat:36.8585, lng:31.0660},
+  {id:"agcpas",  name:"Antalya Golf Club — Pasha",        lat:36.8560, lng:31.0700},
+  {id:"cornelia",name:"Cornelia Golf Club (Faldo)",       lat:36.8515, lng:31.0690},
+  {id:"suenop",  name:"Sueno Pines",                      lat:36.8600, lng:31.0760},
+  {id:"suenod",  name:"Sueno Dunes",                      lat:36.8640, lng:31.0790},
+  {id:"tat",     name:"TAT International Golf",           lat:36.8400, lng:31.0830},
+  {id:"sirene",  name:"Sirene Golf (Sultan / Pasha side)",lat:36.8650, lng:31.0900},
+  {id:"gloriao", name:"Gloria Old Course",                lat:36.8390, lng:31.1110},
+  {id:"glorian", name:"Gloria New Course",                lat:36.8440, lng:31.1140},
+  {id:"gloriav", name:"Gloria Verde",                     lat:36.8360, lng:31.1170},
+  {id:"lykia",   name:"Lykia Links (Denizyaka)",          lat:36.6660, lng:31.2830},
+  {id:"other",   name:"Other course (centre on me)",      lat:36.8600, lng:31.0600},
+];
+let map, meMarker, accCircle, flagMarker, shotLayer, watchId=null, mePos=null, placing=false, lastFix=0;
+const TILES = {
+  sat: ()=>L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Imagery © Esri"}),
+  map: ()=>L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}),
+};
+let tileLayer;
+function haversine(a,b){ const R=6371000,toR=x=>x*Math.PI/180; const dLat=toR(b.lat-a.lat),dLng=toR(b.lng-a.lng);
+  const s=Math.sin(dLat/2)**2+Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLng/2)**2; return 2*R*Math.asin(Math.sqrt(s)); }
+function courseObj(){ return COURSES.find(c=>c.id===state.course)||COURSES[0]; }
+function flagKey(){ return state.course+":"+state.hole; }
+function initMap(){
+  if(map) return;
+  const c=courseObj();
+  map=L.map("map",{zoomControl:true}).setView([c.lat,c.lng],16);
+  tileLayer=TILES.sat().addTo(map);
+  shotLayer=L.layerGroup().addTo(map);
+  map.on("click",e=>{ if(placing){ setFlag(e.latlng); placing=false; document.getElementById("flagBtn").textContent="Place flag by tap"; }});
+  const sel=document.getElementById("course"); sel.innerHTML=COURSES.map(c=>`<option value="${c.id}">${c.name}</option>`).join(""); sel.value=state.course;
+  sel.addEventListener("change",e=>{ state.course=e.target.value; const k=courseObj(); map.setView([k.lat,k.lng],16); save(); renderHoles(); drawHole(); });
+  document.getElementById("unitSel").addEventListener("change",e=>{ map.removeLayer(tileLayer); tileLayer=TILES[e.target.value]().addTo(map); });
+  const sc=document.getElementById("shotClub"); sc.innerHTML=CLUBS.map(c=>`<option value="${c.k}">${c.name}</option>`).join(""); sc.value="7i";
+  renderHoles(); drawHole(); renderRound(); renderLearned();
+}
+function renderHoles(){
+  const box=document.getElementById("holes"); box.innerHTML="";
+  for(let h=1;h<=18;h++){ const b=document.createElement("button"); b.textContent=h;
+    if(h===state.hole) b.classList.add("on"); if(state.flags[state.course+":"+h]) b.classList.add("set");
+    b.addEventListener("click",()=>{ state.hole=h; save(); renderHoles(); drawHole(); }); box.appendChild(b); }
+}
+function setFlag(ll){ state.flags[flagKey()]={lat:ll.lat,lng:ll.lng}; save(); renderHoles(); drawHole(); updateLive(); }
+function holeShots(){ return state.shots.filter(s=>s.course===state.course&&s.hole===state.hole&&s.date===today()); }
+function today(){ return new Date().toISOString().slice(0,10); }
+function drawHole(){
+  if(!map) return;
+  const f=state.flags[flagKey()];
+  if(flagMarker){ map.removeLayer(flagMarker); flagMarker=null; }
+  if(f){ flagMarker=L.marker([f.lat,f.lng],{draggable:true,icon:L.divIcon({className:"",html:'<div class="flag-pin">⛳</div>',iconSize:[22,22],iconAnchor:[6,22]})}).addTo(map);
+    flagMarker.on("dragend",e=>setFlag(e.target.getLatLng()));
+    if(!mePos) map.setView([f.lat,f.lng],17); }
+  shotLayer.clearLayers();
+  const pts=holeShots().map(s=>[s.lat,s.lng]);
+  if(f&&pts.length) pts.push([f.lat,f.lng]);
+  if(pts.length>1) L.polyline(pts,{color:"#fff",weight:2,dashArray:"4 6"}).addTo(shotLayer);
+  holeShots().forEach((s,i)=>L.marker([s.lat,s.lng],{icon:L.divIcon({className:"",html:`<div class="ball-pin" title="${s.club}"></div>`,iconSize:[10,10],iconAnchor:[5,5]})}).bindTooltip(`${i+1}: ${s.club}`).addTo(shotLayer));
+  updateLive();
+}
+function updateLive(){
+  const f=state.flags[flagKey()], hs=holeShots();
+  const dF=document.getElementById("dFlag"), dC=document.getElementById("dClub"), dL=document.getElementById("dLast");
+  if(mePos&&f){ const d=Math.round(haversine(mePos,f)); dF.textContent=d;
+    const lie=document.getElementById("shotLie").value; const fac=(LIES[lie]||LIES.fairway).f;
+    let pick=null; for(const c of [...CLUBS].reverse()){ if(carryOf(c)*fac>=d&&(lie==="tee"||c.k!=="Dr")){pick=c;break;} }
+    dC.textContent = pick?pick.k: d<carryOf(CLUBS[CLUBS.length-1])*fac? "pitch" : "lay up"; }
+  else { dF.textContent="–"; dC.textContent="–"; }
+  if(hs.length&&mePos){ dL.textContent=Math.round(haversine(hs[hs.length-1],mePos)); } else dL.textContent="–";
+}
+function onFix(p){
+  mePos={lat:p.coords.latitude,lng:p.coords.longitude}; lastFix=Date.now();
+  const ll=[mePos.lat,mePos.lng];
+  if(!meMarker){ meMarker=L.marker(ll,{icon:L.divIcon({className:"",html:'<div class="me-dot"></div>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(map);
+    accCircle=L.circle(ll,{radius:p.coords.accuracy,color:"#1E73E8",weight:1,fillOpacity:.1}).addTo(map); map.setView(ll,18); }
+  else { meMarker.setLatLng(ll); accCircle.setLatLng(ll).setRadius(p.coords.accuracy); }
+  document.getElementById("gpsMsg").textContent=`GPS on · accuracy ±${Math.round(p.coords.accuracy)} m`;
+  updateLive();
+}
+document.getElementById("locBtn").addEventListener("click",()=>{
+  if(watchId!==null){ navigator.geolocation.clearWatch(watchId); watchId=null; document.getElementById("locBtn").textContent="Start GPS"; return; }
+  if(!navigator.geolocation){ alert("This browser has no location access. Open the file in Safari or Chrome on your phone, over HTTPS."); return; }
+  watchId=navigator.geolocation.watchPosition(onFix,err=>{ document.getElementById("gpsMsg").textContent="Location blocked: "+err.message+". Allow location for this page in the browser settings."; },{enableHighAccuracy:true,maximumAge:2000,timeout:15000});
+  document.getElementById("locBtn").textContent="Stop GPS";
+});
+document.getElementById("flagBtn").addEventListener("click",e=>{ placing=!placing; e.target.textContent=placing?"Tap the map on the green…":"Place flag by tap"; });
+document.getElementById("centreBtn").addEventListener("click",()=>{ if(mePos) map.setView([mePos.lat,mePos.lng],18); else alert("Start GPS first."); });
+document.getElementById("ballBtn").addEventListener("click",()=>{
+  if(!mePos||Date.now()-lastFix>20000){ alert("No fresh GPS fix. Press Start GPS and wait for the blue dot."); return; }
+  if(state.round.date!==today()||state.round.course!==state.course){ state.round={course:state.course,date:today()}; }
+  state.shots.push({course:state.course,hole:state.hole,date:today(),club:document.getElementById("shotClub").value,lie:document.getElementById("shotLie").value,lat:mePos.lat,lng:mePos.lng,ts:Date.now()});
+  save(); drawHole(); renderRound(); renderLearned();
+  // after the tee shot, default the lie to fairway
+  if(document.getElementById("shotLie").value==="tee") document.getElementById("shotLie").value="fairway";
+});
+document.getElementById("holedBtn").addEventListener("click",()=>{
+  const f=state.flags[flagKey()]; const hs=holeShots();
+  if(!hs.length){ alert("No shots recorded on this hole yet."); return; }
+  const putts=parseInt(prompt("Putts on this hole?","2")); if(isNaN(putts)) return;
+  state.shots.push({course:state.course,hole:state.hole,date:today(),club:"holed",putts,lat:f?f.lat:mePos.lat,lng:f?f.lng:mePos.lng,ts:Date.now()});
+  save(); renderRound(); renderLearned();
+  if(state.hole<18){ state.hole++; save(); renderHoles(); drawHole(); document.getElementById("shotLie").value="tee"; }
+});
+document.getElementById("undoBtn").addEventListener("click",()=>{ const i=state.shots.map(s=>s.course===state.course&&s.date===today()).lastIndexOf(true); if(i>=0){ state.shots.splice(i,1); save(); drawHole(); renderRound(); renderLearned(); }});
+/* per-shot distances: each shot's distance = to the next recorded point on the same hole (or the flag when holed) */
+function measuredShots(){
+  const out=[]; const byHole={};
+  state.shots.forEach(s=>{ const k=s.course+"|"+s.date+"|"+s.hole; (byHole[k]=byHole[k]||[]).push(s); });
+  Object.values(byHole).forEach(list=>{ list.sort((a,b)=>a.ts-b.ts);
+    for(let i=0;i<list.length-1;i++){ const a=list[i],b=list[i+1]; if(a.club==="holed") continue; out.push({...a,dist:Math.round(haversine(a,b))}); } });
+  return out;
+}
+function renderRound(){
+  const box=document.getElementById("roundTable");
+  const rs=state.shots.filter(s=>s.course===state.course&&s.date===today());
+  if(!rs.length){ box.innerHTML=`<p class="empty">No shots yet today on this course.</p>`; return; }
+  const ms=measuredShots().filter(s=>s.course===state.course&&s.date===today());
+  const holes={}; rs.forEach(s=>{ holes[s.hole]=holes[s.hole]||{strokes:0,putts:0,done:false}; if(s.club==="holed"){holes[s.hole].putts=s.putts;holes[s.hole].done=true;} else holes[s.hole].strokes++; });
+  let total=0;
+  box.innerHTML=`<table><thead><tr><th>Hole</th><th class="r">Shots</th><th class="r">Putts</th><th class="r">Score</th><th>Measured</th></tr></thead><tbody>`+
+    Object.keys(holes).sort((a,b)=>a-b).map(h=>{ const o=holes[h]; const sc=o.done?o.strokes+o.putts:null; if(sc) total+=sc;
+      const m=ms.filter(s=>s.hole==+h).map(s=>`${s.club} ${s.dist}m`).join(", ");
+      return `<tr><td>${h}</td><td class="r">${o.strokes}</td><td class="r">${o.done?o.putts:"–"}</td><td class="r">${sc??"…"}</td><td><small>${m}</small></td></tr>`; }).join("")+
+    `</tbody></table><p class="note">Total so far: <strong>${total}</strong> on ${Object.values(holes).filter(o=>o.done).length} holes.</p>`;
+}
+function learnedStats(){
+  const ok=measuredShots().filter(s=>(s.lie==="tee"||s.lie==="fairway")&&s.dist>30);
+  const by={}; ok.forEach(s=>{ (by[s.club]=by[s.club]||[]).push(s.dist); });
+  return CLUBS.map(c=>{ const d=by[c.k]; if(!d) return null; d.sort((a,b)=>a-b);
+    const mid=d.slice(Math.floor(d.length*.2),Math.ceil(d.length*.8)||1); const avg=Math.round(mid.reduce((x,y)=>x+y,0)/mid.length);
+    return {k:c.k,name:c.name,n:d.length,avg,min:d[0],max:d[d.length-1],est:carryOf(c)}; }).filter(Boolean);
+}
+function renderLearned(){
+  const st=learnedStats(); const box=document.getElementById("learned");
+  if(!st.length){ box.innerHTML=`<p class="empty">Nothing measured yet. Record a few shots with "Ball is here".</p>`; return; }
+  box.innerHTML=`<table><thead><tr><th>Club</th><th class="r">Shots</th><th class="r">Typical</th><th class="r">Range</th><th class="r">Bag says</th></tr></thead><tbody>`+
+    st.map(s=>`<tr><td>${s.name}</td><td class="r">${s.n}</td><td class="r"><strong>${s.avg}</strong></td><td class="r">${s.min}–${s.max}</td><td class="r" style="color:${Math.abs(s.avg-s.est)>8?'var(--flag)':'inherit'}">${s.est}</td></tr>`).join("")+`</tbody></table>`;
+}
+document.getElementById("applyLearned").addEventListener("click",()=>{
+  const st=learnedStats().filter(s=>s.n>=3); if(!st.length){ alert("Need at least 3 measured shots with a club before using it."); return; }
+  st.forEach(s=>{ if(s.k==="7i"){ state.seven=s.avg; document.getElementById("seven").value=s.avg; } else state.overrides[s.k]=s.avg; });
+  save(); renderBag(); alert(`Updated ${st.length} club(s) in My bag from GPS data.`);
+});
+
+
+/* ---------- daylight / tee times (NOAA solar position, no network) ---------- */
+function solar(date, lat, lng){
+  // returns function elev(minutesLocal) and sunrise/sunset/civil dawn/dusk as minutes from local midnight
+  const rad=Math.PI/180;
+  const tzOff=-date.getTimezoneOffset()/60;
+  const jd = Math.floor(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate())/86400000)+2440587.5;
+  function pos(minLocal){
+    const t=(jd+ (minLocal/60 - tzOff)/24 - 2451545)/36525;
+    const L0=(280.46646+t*(36000.76983+t*0.0003032))%360;
+    const M=357.52911+t*(35999.05029-0.0001537*t);
+    const e=0.016708634-t*(0.000042037+0.0000001267*t);
+    const C=Math.sin(M*rad)*(1.914602-t*(0.004817+0.000014*t))+Math.sin(2*M*rad)*(0.019993-0.000101*t)+Math.sin(3*M*rad)*0.000289;
+    const trueLong=L0+C; const omega=125.04-1934.136*t;
+    const lam=trueLong-0.00569-0.00478*Math.sin(omega*rad);
+    const eps0=23+(26+((21.448-t*(46.815+t*(0.00059-t*0.001813))))/60)/60;
+    const eps=eps0+0.00256*Math.cos(omega*rad);
+    const decl=Math.asin(Math.sin(eps*rad)*Math.sin(lam*rad));
+    const y=Math.tan(eps*rad/2)**2;
+    const eqT=4*(y*Math.sin(2*L0*rad)-2*e*Math.sin(M*rad)+4*e*y*Math.sin(M*rad)*Math.cos(2*L0*rad)-0.5*y*y*Math.sin(4*L0*rad)-1.25*e*e*Math.sin(2*M*rad))/rad;
+    const tst=(minLocal+eqT+4*lng-60*tzOff+1440)%1440;
+    const ha=(tst/4<0?tst/4+180:tst/4-180)*rad;
+    const elev=Math.asin(Math.sin(lat*rad)*Math.sin(decl)+Math.cos(lat*rad)*Math.cos(decl)*Math.cos(ha))/rad;
+    let az=Math.acos(((Math.sin(lat*rad)*Math.cos(Math.PI/2-elev*rad))-Math.sin(decl))/(Math.cos(lat*rad)*Math.sin(Math.PI/2-elev*rad)))/rad;
+    az = ha>0 ? (az+180)%360 : (540-az)%360;
+    return {elev,az};
+  }
+  // crossings by scanning minute by minute (fast enough: 1440 evaluations)
+  const e=[]; for(let m=0;m<1440;m++) e.push(pos(m).elev);
+  const cross=(th,rising)=>{ for(let m=1;m<1440;m++){ if(rising&&e[m-1]<th&&e[m]>=th) return m; if(!rising&&e[m-1]>=th&&e[m]<th) return m; } return null; };
+  return { pos, elev:m=>e[Math.max(0,Math.min(1439,Math.round(m)))],
+    sunrise:cross(-0.833,true), sunset:cross(-0.833,false), dawn:cross(-6,true), dusk:cross(-6,false),
+    noon: e.indexOf(Math.max(...e)), maxElev: Math.max(...e) };
+}
+const hm=m=> m==null? "–" : `${String(Math.floor(m/60)).padStart(2,"0")}:${String(Math.round(m%60)).padStart(2,"0")}`;
+function renderSun(){
+  const sel=document.getElementById("sunCourse"); const c=COURSES.find(x=>x.id===sel.value)||COURSES[0];
+  const d=new Date(document.getElementById("sunDate").value+"T12:00:00"); if(isNaN(d)) return;
+  const len=parseFloat(document.getElementById("roundLen").value)*60;
+  const s=solar(d,c.lat,c.lng);
+  const first=s.dawn, last=s.sunset-len;
+  document.getElementById("firstTee").textContent=hm(first);
+  document.getElementById("lastTee").textContent=hm(last);
+  document.getElementById("sunrise").textContent=hm(s.sunrise);
+  document.getElementById("sunset").textContent=hm(s.sunset);
+  // chart
+  const W=700,H=200,pad=24; const x=m=>pad+m/1440*(W-2*pad); const y=el=>H-pad-((el+10)/(s.maxElev+10))*(H-2*pad);
+  let g=`<rect x="${x(s.dawn)}" y="0" width="${x(s.dusk)-x(s.dawn)}" height="${H}" fill="#D8C89B" opacity=".35"/>`;
+  // best light band (elev>45)
+  let a=null; for(let m=0;m<1440;m++){ const hi=s.elev(m)>45; if(hi&&a===null)a=m; if(!hi&&a!==null){ g+=`<rect x="${x(a)}" y="0" width="${x(m)-x(a)}" height="${H}" fill="#22503C" opacity=".12"/>`; a=null; } }
+  g+=`<rect x="${x(last)}" y="${H-14}" width="${x(s.sunset)-x(last)}" height="10" fill="#B9391F" opacity=".85"/>`;
+  let path=""; for(let m=0;m<=1440;m+=10){ path+=(m?"L":"M")+x(m).toFixed(1)+","+y(s.elev(m)).toFixed(1)+" "; }
+  g+=`<line x1="${pad}" x2="${W-pad}" y1="${y(0)}" y2="${y(0)}" stroke="#5C6B60" stroke-dasharray="3 4"/>`;
+  g+=`<path d="${path}" fill="none" stroke="#22503C" stroke-width="2.5"/>`;
+  [0,6,12,18,24].forEach(hh=>{ g+=`<text x="${x(hh*60)}" y="${H-2}" font-size="11" text-anchor="middle" fill="#5C6B60">${String(hh).padStart(2,"0")}</text>`; });
+  g+=`<text x="${x(s.noon)}" y="${y(s.maxElev)-6}" font-size="12" text-anchor="middle" fill="#1B241E">${Math.round(s.maxElev)}° at ${hm(s.noon)}</text>`;
+  document.getElementById("sunChart").innerHTML=g;
+  // advice
+  const lastEnd=s.sunset; const lastAz=s.pos(lastEnd-60).az; const firstAz=s.pos(first+40).az;
+  const hours=((s.dusk-s.dawn)/60).toFixed(1);
+  const tips=[];
+  tips.push(`${hours} h of playable light. First flight ${hm(first)}, last flight ${hm(last)} for a ${len/60} h round finishing at sunset ${hm(s.sunset)}; civil dusk ${hm(s.dusk)} is your real deadline.`);
+  if(s.maxElev<40) tips.push(`Low winter sun (max ${Math.round(s.maxElev)}°): the ball flies 3–5 % shorter in cold morning air, and long shadows make reading greens harder after ${hm(s.sunset-90)}.`);
+  else if(s.maxElev>65) tips.push(`High summer sun: midday heat costs energy, not distance. Book the first flight or the last; hydrate every third hole in July–August.`);
+  tips.push(`In the last hour before sunset the sun sits in the ${compass(lastAz)}; holes running that way have it in your eyes. At the first flight it rises in the ${compass(firstAz)}.`);
+  if(last-first<60) tips.push(`Short day: only one realistic flight per group. Everyone wants ${hm(first)}, so book early.`);
+  document.getElementById("sunAdvice").innerHTML=tips.map(t=>`<div class="advice"><p>${t}</p></div>`).join("");
+  // month table
+  const tb=document.getElementById("monthTable"); let rows="";
+  const y0=d.getFullYear(), m0=d.getMonth(); const dim=new Date(y0,m0+1,0).getDate();
+  for(let dd=1;dd<=dim;dd+=3){ const dt=new Date(y0,m0,dd,12); const ss=solar(dt,c.lat,c.lng);
+    rows+=`<tr${dd===d.getDate()?' style="background:#EEF5EC;font-weight:600"':''}><td>${dt.toLocaleDateString(undefined,{day:"numeric",month:"short"})}</td><td>${hm(ss.dawn)}</td><td>${hm(ss.sunrise)}</td><td>${hm(ss.sunset)}</td><td>${hm(ss.sunset-len)}</td><td>${((ss.dusk-ss.dawn)/60).toFixed(1)}</td></tr>`; }
+  tb.innerHTML=`<thead><tr><th>Date</th><th>First tee</th><th>Sunrise</th><th>Sunset</th><th>Last tee</th><th>Light h</th></tr></thead><tbody>${rows}</tbody>`;
+}
+function compass(az){ const n=["north","north-east","east","south-east","south","south-west","west","north-west"]; return n[Math.round(az/45)%8]; }
+function initSun(){
+  const sel=document.getElementById("sunCourse");
+  if(!sel.options.length){ sel.innerHTML=COURSES.map(c=>`<option value="${c.id}">${c.name}</option>`).join(""); sel.value=state.course;
+    document.getElementById("sunDate").value=today();
+    ["sunCourse","sunDate","roundLen"].forEach(id=>document.getElementById(id).addEventListener("change",renderSun)); }
+  renderSun();
+}
+
+/* ---------- tabs ---------- */
+document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click",()=>{
+  document.querySelectorAll("nav button").forEach(x=>x.setAttribute("aria-selected",x===b));
+  document.querySelectorAll("main section").forEach(s=>s.hidden = s.id!=="tab-"+b.dataset.tab);
+  if(b.dataset.tab==="gps"){ initMap(); setTimeout(()=>map.invalidateSize(),50); }
+  if(b.dataset.tab==="sun"){ initSun(); }
+}));
+
+/* ---------- init ---------- */
+(async()=>{
+  await load();
+  document.getElementById("seven").value=state.seven;
+  document.getElementById("level").value=state.level;
+  document.getElementById("mode").value=state.mode;
+  document.getElementById("ldate").value=new Date().toISOString().slice(0,10);
+  renderBag(); renderLog();
+})();
+</script>
+</body>
+</html>
