@@ -13,6 +13,7 @@ const { chromium } = require('playwright'); const fs=require('fs');
       await p.waitForFunction(()=>window.DONE===true,null,{timeout:900000,polling:2000});
       const r=await p.evaluate(()=>window.RESULT);
       fs.writeFileSync(`preview/out/traced-${id}.json`, JSON.stringify(r));
+      await p.evaluate(()=>{ const c=document.getElementById('c'); c.style.width='900px'; c.style.height='900px'; }); await p.locator('#c').screenshot({path:`preview/out/canvas-${id}.png`});
       const hs=Object.values(r.holes); console.log('traced',id,r.src,'holes',hs.length,'f',hs.reduce((a,h)=>a+(h.f||[]).length,0),'b',hs.reduce((a,h)=>a+(h.b||[]).length,0),'w',hs.reduce((a,h)=>a+(h.w||[]).length,0),'g',hs.filter(h=>(h.g||[]).length).length, Math.round((Date.now()-t0)/1000)+'s');
     }catch(e){ console.log('FAILED',id,e.message.slice(0,200)); const r=await p.evaluate(()=>window.RESULT).catch(()=>null); if(r) fs.writeFileSync(`preview/out/traced-${id}.json`, JSON.stringify(r)); }
     await p.close();
