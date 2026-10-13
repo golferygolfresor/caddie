@@ -863,7 +863,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
         <select id="unitSel"><option value="hybrid">Hybrid (satellite + overlay)</option><option value="hole">Hole view (drawn)</option><option value="sat">Satellite</option><option value="map">Street map</option></select>
       </div>
     </div>
-    <div class="row" id="imgRow" style="margin-top:-6px"><div class="field"><label for="imgSel">Imagery</label><select id="imgSel"><option value="esri">Esri</option><option value="google">Google</option></select></div></div>
+    <div class="row" id="imgRow" style="margin-top:-6px"><div class="field"><label for="imgSel">Imagery</label><select id="imgSel"><option value="google">Google</option><option value="esri">Esri</option></select></div></div>
     <div class="holes" id="holes"></div>
     <div id="holeView" class="holeview"><svg id="holeSvg" viewBox="0 0 360 520" preserveAspectRatio="xMidYMid meet"></svg><div class="hv-empty" id="hvEmpty" hidden>No hole data for this course yet — switch to Satellite and place the flag by tap, or play the hole once.</div></div>
     <div id="map"></div>
@@ -1483,7 +1483,7 @@ function initMap(){
   sel.addEventListener("change",e=>{ state.course=e.target.value; state.hole=1; if(mapping) setMapping(false); syncTeeSel(); const k=courseObj(); map.setView([k.lat,k.lng],16); save(); renderHoles(); drawHole(); });
   document.getElementById("unitSel").addEventListener("change",e=>{ state.view=e.target.value; save(); applyView(); });
   state.view=state.view||"hybrid"; document.getElementById("unitSel").value=state.view;
-  document.getElementById("imgSel").value=state.imagery||"esri"; document.getElementById("imgSel").addEventListener("change",e=>{ state.imagery=e.target.value; save(); renderHoleView(); });
+  document.getElementById("imgSel").value=state.imagery||"google"; document.getElementById("imgSel").addEventListener("change",e=>{ state.imagery=e.target.value; save(); renderHoleView(); });
   applyView();
   const sc=document.getElementById("shotClub"); sc.innerHTML=CLUBS.map(c=>`<option value="${c.k}">${c.name}</option>`).join(""); sc.value="7i";
   renderHoles(); drawHole(); renderRound(); renderLearned();
@@ -1508,6 +1508,7 @@ function applyView(){
 }
 
 /* ---------- imagery providers for the hybrid view ---------- */
+let googleFailed=false;
 const GOOGLE_KEY="AIzaSyDyJMWF0R2YOwPfL-gvPbCurmJtM3lRYhY";
 let googleSession=null;
 async function ensureGoogleSession(){
@@ -1516,7 +1517,7 @@ async function ensureGoogleSession(){
   if(!r.ok) throw new Error("google session "+r.status); const j=await r.json(); googleSession=j; localStorage.setItem("caddie-gsession",JSON.stringify(j)); return j;
 }
 function tileUrl(z,x,y){
-  if((state.imagery||"esri")==="google"&&googleSession) return `https://tile.googleapis.com/v1/2dtiles/${z}/${x}/${y}?session=${googleSession.session}&key=${GOOGLE_KEY}`;
+  if((state.imagery||"google")==="google"&&googleSession&&!googleFailed) return `https://tile.googleapis.com/v1/2dtiles/${z}/${x}/${y}?session=${googleSession.session}&key=${GOOGLE_KEY}`;
   return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
 }
 const HV_STYLES={
@@ -1527,7 +1528,7 @@ const HV_STYLES={
 };
 function renderHoleView(){
   const v=state.view||"hybrid"; if(v!=="hole"&&v!=="hybrid") return;
-  if(v==="hybrid"&&(state.imagery||"esri")==="google"&&!googleSession){ ensureGoogleSession().then(()=>renderHoleView()).catch(e=>{ console.warn(e); state.imagery="esri"; renderHoleView(); }); return; }
+  if(v==="hybrid"&&(state.imagery||"google")==="google"&&!googleSession&&!googleFailed){ ensureGoogleSession().then(()=>renderHoleView()).catch(e=>{ console.warn(e); googleFailed=true; renderHoleView(); }); return; }
   const S = v==="hybrid" ? HV_STYLES.hybrid : (HV_STYLES[state.hvStyle||"classic"]||HV_STYLES.classic);
   const svg=document.getElementById("holeSvg"), empty=document.getElementById("hvEmpty");
   const ln=holeLine(); const pts=apiHolePts();
@@ -1568,7 +1569,7 @@ function renderHoleView(){
       s+=`<image href="${tileUrl(z,tx,ty)}" width="257" height="257" transform="matrix(${a.toFixed(5)} ${b.toFixed(5)} ${c.toFixed(5)} ${d.toFixed(5)} ${X(p00).toFixed(2)} ${Y(p00).toFixed(2)})" style="image-rendering:auto"/>`;
     }
     s+=`</g>`;
-    if((state.imagery||"esri")==="google") s+=`<text x="${W-8}" y="${H-8}" font-size="9" fill="#fff" text-anchor="end" stroke="#000" stroke-width="2" paint-order="stroke">Imagery ©Google</text>`; else s+=`<text x="${W-8}" y="${H-8}" font-size="9" fill="#fff" text-anchor="end" stroke="#000" stroke-width="2" paint-order="stroke">Imagery ©Esri</text>`;
+    if((state.imagery||"google")==="google"&&!googleFailed) s+=`<text x="${W-8}" y="${H-8}" font-size="9" fill="#fff" text-anchor="end" stroke="#000" stroke-width="2" paint-order="stroke">Imagery ©Google</text>`; else s+=`<text x="${W-8}" y="${H-8}" font-size="9" fill="#fff" text-anchor="end" stroke="#000" stroke-width="2" paint-order="stroke">Imagery ©Esri</text>`;
   } else {
     // soft rough texture
     s+=`<rect width="${W}" height="${H}" fill="url(#g)" opacity=".35"/><defs><radialGradient id="g" cx="50%" cy="40%" r="70%"><stop offset="0" stop-color="${S.bg2}"/><stop offset="1" stop-color="${S.bg3}"/></radialGradient></defs>`;
