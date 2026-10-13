@@ -676,6 +676,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
 </style>
 <script src="leaflet.js"></script>
 <script src="holes.js"></script>
+<script src="courses.js"></script>
 <style>
   #map{height:42vh;min-height:260px;max-height:420px;border-radius:10px;border:1px solid var(--line);margin-bottom:12px;background:#dfe6d8}
   .gpsbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
@@ -1099,7 +1100,7 @@ const CLUBS = [
 const LEVEL_SPREAD = {new:0.20, mid:0.12, steady:0.07};
 
 const state = { seven:120, level:"new", mode:"carry", overrides:{}, log:[],
-  course:"carya", hole:1, flags:{}, shots:[], osmHoles:{}, api:{}, round:{course:null, date:null} };
+  course:"api:0121233434539341", hole:1, flags:{}, shots:[], osmHoles:{}, api:{}, round:{course:null, date:null} };
 
 /* ---------- storage (persists in artifact storage when available) ---------- */
 async function load(){
@@ -1288,20 +1289,13 @@ function renderCoach(){
 /* ---------- course GPS ---------- */
 /* Centre points of the Belek courses (approximate — zoom and check). Flags are placed by you, per hole. */
 const COURSES = [
-  {id:"carya",   name:"Carya Golf Club (Regnum)",             lat:36.8664, lng:31.0107, bbox:[36.862,31.0035,36.872,31.022]},
-  {id:"montg",   name:"Montgomerie Maxx Royal",              lat:36.8553, lng:31.0627, bbox:[36.849,31.055,36.861,31.075]},
   {id:"national",name:"National Golf Club",                  lat:36.8701, lng:30.9830, bbox:[36.862,30.978,36.877,30.989]},
   {id:"titanic", name:"Titanic Golf Club",                   lat:36.8665, lng:30.9767, bbox:[36.861,30.969,36.872,30.981]},
-  {id:"cullinan",name:"Cullinan Links",                      lat:36.8609, lng:30.9681, bbox:[36.856,30.961,36.866,30.974]},
   {id:"kaya",    name:"Kaya Palazzo Golf Club",              lat:36.8630, lng:30.9990, bbox:[36.856,30.9900,36.870,31.0030]},
-  {id:"agcsultan",name:"Antalya Golf Club — PGA Sultan",     lat:36.8662, lng:30.9950, bbox:[36.858,30.9865,36.878,31.0025]},
-  {id:"agcpasha", name:"Antalya Golf Club — The Pasha",      lat:36.8700, lng:30.9960, bbox:[36.858,30.9865,36.878,31.0025]},
   {id:"cornelia",name:"Cornelia Golf Club (Faldo)",          lat:36.8592, lng:31.0476, bbox:[36.852,31.040,36.868,31.058]},
-  {id:"sueno",   name:"Sueno Pines / Dunes",                 lat:36.8621, lng:31.0268, bbox:[36.855,31.015,36.870,31.055]},
   {id:"tat",     name:"TAT International Golf",              lat:36.8600, lng:30.9852, bbox:[36.852,30.978,36.866,30.994]},
   {id:"nobilis", name:"Robinson Nobilis Golf",               lat:36.8445, lng:31.1150, bbox:[36.838,31.105,36.850,31.126]},
   {id:"gloria",  name:"Gloria Old / New / Verde",            lat:36.8483, lng:31.0939, bbox:[36.842,31.080,36.855,31.111]},
-  {id:"lykia",   name:"Lykia Links",                         lat:36.8321, lng:31.1876, bbox:[36.824,31.178,36.840,31.198]},
   {id:"other",   name:"Other course (centre on me)",         lat:36.8600, lng:31.0600, bbox:null},
 ];
 let map, meMarker, accCircle, flagMarker, shotLayer, watchId=null, mePos=null, placing=false, lastFix=0;
@@ -1312,7 +1306,7 @@ const TILES = {
 let tileLayer;
 function haversine(a,b){ const R=6371000,toR=x=>x*Math.PI/180; const dLat=toR(b.lat-a.lat),dLng=toR(b.lng-a.lng);
   const s=Math.sin(dLat/2)**2+Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLng/2)**2; return 2*R*Math.asin(Math.sqrt(s)); }
-function courseObj(){ if(state.course.startsWith("api:")){ const r=state.api[state.course.slice(4)]; if(r) return {id:state.course,name:r.name,lat:+r.lat||36.86,lng:+r.lng||31.05,bbox:null,api:r}; } return COURSES.find(c=>c.id===state.course)||COURSES[0]; }
+function courseObj(){ if(state.course.startsWith("api:")){ const r=apiAll()[state.course.slice(4)]; if(r) return {id:state.course,name:r.name,lat:+r.lat||36.86,lng:+r.lng||31.05,bbox:null,api:r}; } return COURSES.find(c=>c.id===state.course)||COURSES[0]; }
 function flagKey(){ return state.course+":"+state.hole; }
 
 
@@ -1326,7 +1320,16 @@ async function apiGet(path){
   if(!r.ok){ throw new Error(`golfapi.io answered ${r.status}${r.status===401?" — key not accepted":r.status===402?" — no calls left":""}`); }
   return r.json();
 }
-function apiCourses(){ return Object.values(state.api||{}); }
+function bundledApi(){
+  if(window._bundled) return window._bundled; const o={};
+  Object.entries(window.API_COURSES||{}).forEach(([id,c])=>{
+    o[id]={courseID:id,name:c.name,club:c.club,lat:c.lat,lng:c.lng,bundled:true,
+      card:{parsMen:c.par,indexesMen:c.si,numTees:c.tees.length,tees:c.tees.map(t=>{const r={teeName:t.name,teeColor:t.color,courseRatingMen:t.cr,slopeMen:t.slope}; t.len.forEach((l,i)=>r["length"+(i+1)]=l); return r;})},
+      coords:c.pts.map(a=>({hole:a[0],poi:a[1],loc:a[2],side:a[3],lat:a[4],lng:a[5]}))};
+  }); return window._bundled=o;
+}
+function apiAll(){ return Object.assign({},bundledApi(),state.api||{}); }
+function apiCourses(){ return Object.values(apiAll()); }
 function apiStatus(t){ document.getElementById("apiStatus").textContent=t; }
 async function apiSearch(){
   const city=document.getElementById("apiCity").value.trim(), country=document.getElementById("apiCountry").value.trim();
@@ -1340,7 +1343,7 @@ function renderApiList(list){
   const box=document.getElementById("apiList");
   if(!list.length){ box.innerHTML=`<p class="empty">Nothing found. Try the city "serik" or "antalya".</p>`; return; }
   box.innerHTML=`<table><thead><tr><th>Course</th><th>Club</th><th class="r">Holes</th><th>GPS</th><th></th></tr></thead><tbody>`+
-    list.map(c=>{ const have=state.api&&state.api[c.courseID]; return `<tr><td>${c.courseName}</td><td><small>${c.clubName}<br>${c.city||""}</small></td><td class="r">${c.numHoles}</td><td>${c.hasGPS?"✓":"–"}</td>
+    list.map(c=>{ const have=apiAll()[c.courseID]; return `<tr><td>${c.courseName}</td><td><small>${c.clubName}<br>${c.city||""}</small></td><td class="r">${c.numHoles}</td><td>${c.hasGPS?"✓":"–"}</td>
       <td>${have?`<small>imported ${have.coords?have.coords.length+" pts":""}${have.card?", card":""}</small>`:""}<br><button class="ghost" style="padding:4px 8px;font-size:13px" data-cid="${c.courseID}" data-name="${c.courseName}" data-club="${c.clubName}" data-gps="${c.hasGPS?1:0}">${have?"Re-fetch":"Fetch (2 calls)"}</button></td></tr>`; }).join("")+`</tbody></table>`;
   box.querySelectorAll("button[data-cid]").forEach(b=>b.addEventListener("click",()=>fetchCourse(b.dataset)));
 }
@@ -1365,7 +1368,7 @@ document.getElementById("apiExport").addEventListener("click",()=>{
 /* API-imported courses become selectable courses with id "api:<courseID>" */
 function refreshCourseList(){
   const sel=document.getElementById("course"); if(!sel) return;
-  const extra=apiCourses().map(r=>({id:"api:"+r.courseID,name:"★ "+r.name+(r.club&&!r.name.includes(r.club.split(" ")[0])?" — "+r.club:""),lat:+r.lat||36.86,lng:+r.lng||31.05,bbox:null,api:r}));
+  const extra=apiCourses().sort((a,b)=>a.name.localeCompare(b.name)).map(r=>({id:"api:"+r.courseID,name:(r.bundled?"":"★ ")+r.name+(r.bundled?"":" — "+r.club),lat:+r.lat||36.86,lng:+r.lng||31.05,bbox:null,api:r}));
   const all=[...extra,...COURSES];
   sel.innerHTML=all.map(c=>`<option value="${c.id}">${c.name}</option>`).join(""); sel.value=state.course;
   const sun=document.getElementById("sunCourse"); if(sun&&sun.options.length){ sun.innerHTML=sel.innerHTML; }
@@ -1376,7 +1379,8 @@ function syncTeeSel(){
   else if(window.COURSE_META[state.course]){ ts.innerHTML=`<option value="1">Yellow tees</option><option value="0">Black tees</option><option value="2">White tees</option><option value="3">Red tees</option>`; ts.closest(".field").style.display=""; }
   else ts.closest(".field").style.display="none";
 }
-function apiRec(){ return state.course.startsWith("api:") ? state.api[state.course.slice(4)] : null; }
+const TIPS_FOR={"0121242800342292":"agcsultan"};
+function apiRec(){ return state.course.startsWith("api:") ? apiAll()[state.course.slice(4)] : null; }
 function apiHolePts(){ const r=apiRec(); return r&&r.coords ? r.coords.filter(p=>p.hole===state.hole) : []; }
 
 /* ---------- hole centrelines: bundled (holes.js) + loaded from OpenStreetMap (saved in state) ---------- */
@@ -1412,11 +1416,12 @@ document.getElementById("osmBtn").addEventListener("click",loadOsmHoles);
 let mapping=false, mapPts=[];
 function metaFor(){
   const r=apiRec(); if(r&&r.card){ const c=r.card, i=state.hole-1; const tees=(c.tees||[]); const t=Math.min(parseInt(document.getElementById("teeSel").value||0),tees.length-1);
-    const par=(c.parsMen||[])[i], si=(c.indexesMen||[])[i]; if(par) return {par, si, name: tees[t]?`${tees[t].teeName} tees`:"", d: tees.map(x=>x["length"+(i+1)]), tip:null, api:true}; }
+    const par=(c.parsMen||[])[i], si=(c.indexesMen||[])[i]; const tipSrc=window.COURSE_META[TIPS_FOR[state.course.slice(4)]]; const tip=tipSrc&&tipSrc.holes[state.hole]?tipSrc.holes[state.hole].tip:null; const hname=tipSrc&&tipSrc.holes[state.hole]?tipSrc.holes[state.hole].name:null;
+    if(par) return {par, si, name: tees[t]?`${tees[t].teeName} tees`:"", hname, d: tees.map(x=>x["length"+(i+1)]), tip, api:true}; }
   const m=window.COURSE_META[state.course]; return m&&m.holes[state.hole]; }
 function holeHeader(){
   const m=metaFor(); if(!m) return `Hole ${state.hole}`;
-  if(m.api){ const t=Math.min(parseInt(document.getElementById("teeSel").value||0),m.d.length-1); return `Hole ${state.hole} · Par ${m.par}${m.si?" · SI "+m.si:""} · ${m.d[t]||"–"} m from the ${m.name.toLowerCase()}`; }
+  if(m.api){ const t=Math.min(parseInt(document.getElementById("teeSel").value||0),m.d.length-1); return `Hole ${state.hole} · Par ${m.par}${m.si?" · SI "+m.si:""}${m.hname?" · "+m.hname:""} · ${m.d[t]||"–"} m from the ${m.name.toLowerCase()}`; }
   const t=parseInt(document.getElementById("teeSel").value||1); return `Hole ${state.hole} · Par ${m.par} · ${m.name} · ${m.d[t]} m from the ${window.COURSE_META[state.course].tees[t].toLowerCase()} tees`;
 }
 function setMapping(on){
@@ -1600,7 +1605,7 @@ function renderRound(){
     Object.keys(holes).sort((a,b)=>a-b).map(h=>{ const o=holes[h]; const sc=o.done?o.strokes+o.putts:null; if(sc) total+=sc;
       const m=ms.filter(s=>s.hole==+h).map(s=>`${s.club} ${s.dist}m`).join(", ");
       const ar=apiRec(); const pm=(ar&&ar.card&&ar.card.parsMen&&ar.card.parsMen[h-1])?{par:ar.card.parsMen[h-1]}:(window.COURSE_META[state.course]&&window.COURSE_META[state.course].holes[h]); return `<tr><td>${h}${pm?` <small style="color:#5C6B60">par ${pm.par}</small>`:""}</td><td class="r">${o.strokes}</td><td class="r">${o.done?o.putts:"–"}</td><td class="r">${sc??"…"}</td><td><small>${m}</small></td></tr>`; }).join("")+
-    `</tbody></table><p class="note">Total so far: <strong>${total}</strong> on ${Object.values(holes).filter(o=>o.done).length} holes.</p>`;
+    `</tbody></table><p class="note">Total so far: <strong>${total}</strong> on ${Object.values(holes).filter(o=>o.done).length} holes${(()=>{const ar=apiRec(); if(!ar||!ar.card) return ""; const done=Object.keys(holes).filter(k=>holes[k].done); const par=done.reduce((s,k)=>s+(ar.card.parsMen[k-1]||0),0); return par?` (par ${par}, ${total-par>=0?"+":""}${total-par})`:"";})()}.</p>`;
 }
 function learnedStats(){
   const ok=measuredShots().filter(s=>(s.lie==="tee"||s.lie==="fairway")&&s.dist>30);
@@ -1719,6 +1724,8 @@ document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click",()
   document.getElementById("level").value=state.level;
   document.getElementById("mode").value=state.mode;
   document.getElementById("ldate").value=new Date().toISOString().slice(0,10);
+  const MIGRATE={carya:"api:0121233434539341",montg:"api:0121439894853450209",cullinan:"api:0121466411709347465",agcsultan:"api:0121242800342292",agcpasha:"api:0121174210810465",sueno:"api:0121205153813084",lykia:"api:0121230812405317",agc:"api:0121242800342292"};
+  if(MIGRATE[state.course]) state.course=MIGRATE[state.course];
   // cleanup: remove any loaded/mapped hole lines that lie outside their course's box
   if(state.osmHoles){ Object.keys(state.osmHoles).forEach(cid=>{ const c=COURSES.find(x=>x.id===cid); if(!c||!c.bbox) return; const hs=state.osmHoles[cid];
     Object.keys(hs).forEach(n=>{ if(!hs[n].every(g=>g[0]>=c.bbox[0]&&g[0]<=c.bbox[2]&&g[1]>=c.bbox[1]&&g[1]<=c.bbox[3])) delete hs[n]; }); if(!Object.keys(hs).length) delete state.osmHoles[cid]; }); save(); }

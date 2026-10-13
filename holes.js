@@ -41,7 +41,7 @@ window.COURSE_META = {
       9:{par:4,name:"The Choice",d:[329,304,279,237],tip:"Brave line between bunkers and lake shortens the hole; the safe right side adds two clubs to the approach."},
       10:{par:4,name:"The Key Hole",d:[361,330,308,284],tip:"Gentle fade to the wide part of the fairway. Stay clear of the cliff wall left of the green."},
       11:{par:4,name:"Taurus View",d:[366,343,309,277],tip:"Steady drive to the top of the slope, then an approach between the lakes. No lay-up: take enough club."},
-      12:{par:4,name:"Eucalyptus Drive",d:[433,422,390,363],tip:"Narrow, long, bunkers all the way. Be proud of par."},
+      12:{par:5,name:"Eucalyptus Drive",d:[433,422,390,363],tip:"Narrow, long, bunkers all the way. Be proud of par."},
       13:{par:4,name:"Spectacles",d:[401,356,332,300],tip:"Drive between the tall trees, then lots of club to carry 'the spectacles' bunkers."},
       14:{par:4,name:"Bunkered",d:[373,326,296,270],tip:"The most bunkered hole you'll see. Staying on grass all the way is an achievement."},
       15:{par:4,name:"The Long Fellow",d:[393,367,340,293],tip:"Straight and gentle — the calm before the storm. Birdie chance before the finish."},
