@@ -1,18 +1,80 @@
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>trace</title>
-<style>html,body{margin:0;background:#000}#g{position:relative;overflow:hidden}#g img{position:absolute;width:256px;height:256px}</style>
-</head><body><div id="g"></div>
+<style>html,body{margin:0;background:#000;color:#0f0;font:12px monospace}canvas{display:block}pre{white-space:pre-wrap;word-break:break-all;color:#fff;background:#000;padding:8px}</style>
+</head><body>
+<canvas id="c"></canvas><pre id="out">working…</pre>
 <script>
-// Georeferenced satellite capture: ?lat=&lng=&z=18&px=1536 renders a px×px square of Esri World Imagery centred on lat/lng.
-// Pixel (x,y) ↔ Web Mercator: worldPx = 256*2^z; px0 = centre - px/2.
-const q=new URLSearchParams(location.search); const lat=+q.get("lat"), lng=+q.get("lng"), z=+(q.get("z")||18), px=+(q.get("px")||1536);
+/* Satellite tracer. ?lat=&lng=&z=18&px=1024[&gx=lat,lng (green centre)][&tx=lat,lng (tee)][&cell=4][&dbg=1]
+   Loads Esri World Imagery tiles into a canvas, classifies cells (fairway / sand / water / trees), extracts
+   simplified polygons and prints them as JSON in lat/lng.  Output: {ok, stats, polys:{fairway,bunker,water,trees,green}} */
+const q=new URLSearchParams(location.search);
+const lat=+q.get("lat"), lng=+q.get("lng"), z=+(q.get("z")||18), px=+(q.get("px")||1024), cell=+(q.get("cell")||4);
+const gx=(q.get("gx")||"").split(",").map(Number), tx=(q.get("tx")||"").split(",").map(Number);
 const n=256*Math.pow(2,z);
-const cx=(lng+180)/360*n, cy=(1-Math.log(Math.tan(lat*Math.PI/180)+1/Math.cos(lat*Math.PI/180))/Math.PI)/2*n;
-const x0=Math.round(cx-px/2), y0=Math.round(cy-px/2);
-const g=document.getElementById("g"); g.style.width=px+"px"; g.style.height=px+"px";
-for(let tx=Math.floor(x0/256); tx<=Math.floor((x0+px)/256); tx++) for(let ty=Math.floor(y0/256); ty<=Math.floor((y0+px)/256); ty++){
-  const im=document.createElement("img"); im.src=`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${ty}/${tx}`;
-  im.style.left=(tx*256-x0)+"px"; im.style.top=(ty*256-y0)+"px"; g.appendChild(im);
+const toPx=(la,lo)=>[(lo+180)/360*n, (1-Math.log(Math.tan(la*Math.PI/180)+1/Math.cos(la*Math.PI/180))/Math.PI)/2*n];
+const toLL=(X,Y)=>{ const lo=X/n*360-180; const t=Math.PI*(1-2*Y/n); const la=180/Math.PI*Math.atan(0.5*(Math.exp(t)-Math.exp(-t))); return [+la.toFixed(6),+lo.toFixed(6)]; };
+const [cx,cy]=toPx(lat,lng); const x0=Math.round(cx-px/2), y0=Math.round(cy-px/2);
+const mPerPx = 156543.03392*Math.cos(lat*Math.PI/180)/Math.pow(2,z); // metres per pixel
+const C=document.getElementById("c"); C.width=px; C.height=px; const ctx=C.getContext("2d",{willReadFrequently:true});
+const out=document.getElementById("out");
+const loads=[];
+for(let tX=Math.floor(x0/256); tX<=Math.floor((x0+px-1)/256); tX++) for(let tY=Math.floor(y0/256); tY<=Math.floor((y0+px-1)/256); tY++){
+  loads.push(new Promise(res=>{ const im=new Image(); im.crossOrigin="anonymous";
+    im.onload=()=>{ ctx.drawImage(im, tX*256-x0, tY*256-y0); res(1); }; im.onerror=()=>res(0);
+    im.src=`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${tY}/${tX}`; }));
 }
-document.title=`x0=${x0} y0=${y0} z=${z} px=${px}`;
+Promise.all(loads).then(ok=>{
+  let img; try{ img=ctx.getImageData(0,0,px,px).data; }catch(e){ out.textContent=JSON.stringify({ok:false,error:"canvas tainted (no CORS): "+e.message}); return; }
+  const G=Math.floor(px/cell); // grid
+  const cls=new Uint8Array(G*G); // 0 other,1 fairway,2 sand,3 water,4 trees
+  const stats={fairway:0,sand:0,water:0,trees:0,other:0,tilesLoaded:ok.filter(Boolean).length,tiles:ok.length};
+  const hsv=(r,g,b)=>{ r/=255;g/=255;b/=255; const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn; let h=0; if(d){ if(mx===r)h=((g-b)/d)%6; else if(mx===g)h=(b-r)/d+2; else h=(r-g)/d+4; h*=60; if(h<0)h+=360; } return [h, mx?d/mx:0, mx]; };
+  const V=new Float32Array(G*G); // brightness for texture
+  for(let gy=0;gy<G;gy++) for(let gxi=0;gxi<G;gxi++){
+    let r=0,g=0,b=0,c=0, vs=[]; for(let y=gy*cell;y<(gy+1)*cell;y++) for(let x=gxi*cell;x<(gxi+1)*cell;x++){ const i=(y*px+x)*4; r+=img[i];g+=img[i+1];b+=img[i+2];c++; vs.push((img[i]+img[i+1]+img[i+2])/3); }
+    r/=c;g/=c;b/=c; const [h,s,v]=hsv(r,g,b); const mean=vs.reduce((a,b)=>a+b)/c; const tex=Math.sqrt(vs.reduce((a,b)=>a+(b-mean)**2,0)/c)/255;
+    V[gy*G+gxi]=v;
+    let k=0;
+    if(h>=175&&h<=260&&s>0.12&&v>0.12) k=3;                                   // water
+    else if(v>0.55&&s<0.28&&r>=g-6&&g>=b-4) k=2;                                // sand (bright, pale)
+    else if(h>=55&&h<=150&&s>0.18&&v>0.30&&tex<0.10) k=1;                      // mown grass: green, smooth
+    else if(h>=50&&h<=170&&(v<=0.30||tex>=0.10)) k=4;                           // trees / rough: green but dark or textured
+    cls[gy*G+gxi]=k;
+  }
+  // majority smoothing (3x3) ×2
+  for(let pass=0;pass<2;pass++){ const nc=new Uint8Array(cls); for(let y=1;y<G-1;y++) for(let x=1;x<G-1;x++){ const cnt=[0,0,0,0,0]; for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++) cnt[cls[(y+dy)*G+x+dx]]++; let best=0; for(let k=1;k<5;k++) if(cnt[k]>cnt[best]) best=k; nc[y*G+x]=best; } cls.set(nc); }
+  // count
+  for(let i=0;i<G*G;i++) stats[["other","fairway","sand","water","trees"][cls[i]]]++;
+  const cellM=cell*mPerPx; stats.cellMetres=+cellM.toFixed(2); stats.metresPerPixel=+mPerPx.toFixed(3);
+  // connected components → polygons via boundary tracing on a mask
+  function components(k){ const seen=new Uint8Array(G*G); const comps=[]; for(let i=0;i<G*G;i++){ if(cls[i]!==k||seen[i]) continue; const stack=[i], cellsIn=[]; seen[i]=1; while(stack.length){ const j=stack.pop(); cellsIn.push(j); const y=Math.floor(j/G), x=j%G; [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dy])=>{ const nx=x+dx, ny=y+dy; if(nx<0||ny<0||nx>=G||ny>=G) return; const jj=ny*G+nx; if(cls[jj]===k&&!seen[jj]){ seen[jj]=1; stack.push(jj); } }); } comps.push(cellsIn); } return comps; }
+  function outline(cellsIn){ // marching-squares style boundary of a cell set, as polygon of cell corners
+    const set=new Set(cellsIn); const edges=new Map(); const key=(x,y)=>x+","+y;
+    cellsIn.forEach(j=>{ const y=Math.floor(j/G), x=j%G; const nb=(dx,dy)=>set.has((y+dy)*G+x+dx);
+      if(!nb(0,-1)) addE(x,y,x+1,y); if(!nb(1,0)) addE(x+1,y,x+1,y+1); if(!nb(0,1)) addE(x+1,y+1,x,y+1); if(!nb(-1,0)) addE(x,y+1,x,y); });
+    function addE(ax,ay,bx,by){ const a=key(ax,ay); if(!edges.has(a)) edges.set(a,[]); edges.get(a).push([bx,by]); }
+    // walk the longest ring
+    let best=[]; const used=new Set();
+    for(const [start,nexts] of edges){ if(used.has(start)) continue; const ring=[]; let cur=start; let guard=0;
+      while(cur&&!used.has(cur)&&guard++<200000){ used.add(cur); const [sx,sy]=cur.split(",").map(Number); ring.push([sx,sy]); const nx=(edges.get(cur)||[])[0]; cur=nx?key(nx[0],nx[1]):null; }
+      if(ring.length>best.length) best=ring; }
+    return best;
+  }
+  function simplify(pts,tol){ if(pts.length<4) return pts; const sq=(a,b)=>(a[0]-b[0])**2+(a[1]-b[1])**2; const dseg=(p,a,b)=>{ const l=sq(a,b); if(!l) return sq(p,a); let t=((p[0]-a[0])*(b[0]-a[0])+(p[1]-a[1])*(b[1]-a[1]))/l; t=Math.max(0,Math.min(1,t)); return sq(p,[a[0]+t*(b[0]-a[0]),a[1]+t*(b[1]-a[1])]); };
+    const keep=new Uint8Array(pts.length); keep[0]=keep[pts.length-1]=1; const st=[[0,pts.length-1]];
+    while(st.length){ const [i,j]=st.pop(); let md=0,mi=-1; for(let k=i+1;k<j;k++){ const d=dseg(pts[k],pts[i],pts[j]); if(d>md){md=d;mi=k;} } if(md>tol*tol&&mi>0){ keep[mi]=1; st.push([i,mi],[mi,j]); } }
+    return pts.filter((p,i)=>keep[i]); }
+  const toLatLng=p=>toLL(x0+p[0]*cell, y0+p[1]*cell);
+  const polysFor=(k,minArea)=>components(k).filter(c=>c.length*cellM*cellM>=minArea).map(c=>simplify(outline(c),1.2).map(toLatLng)).filter(p=>p.length>=4);
+  const polys={fairway:polysFor(1,1200), bunker:polysFor(2,20), water:polysFor(3,150), trees:polysFor(4,400)};
+  // green: the fairway component containing the green centre, clipped to a 28 m radius
+  polys.green=[];
+  if(gx.length===2&&!isNaN(gx[0])){ const [gpx,gpy]=toPx(gx[0],gx[1]); const gcx=Math.floor((gpx-x0)/cell), gcy=Math.floor((gpy-y0)/cell);
+    const comp=components(1).find(c=>c.includes(gcy*G+gcx)); const rad=28/cellM;
+    const cellsIn = comp ? comp.filter(j=>{ const y=Math.floor(j/G), x=j%G; return Math.hypot(x-gcx,y-gcy)<=rad; }) : [];
+    if(cellsIn.length>=4) polys.green=[simplify(outline(cellsIn),1.0).map(toLatLng)]; stats.greenCells=cellsIn.length; }
+  stats.polys={fairway:polys.fairway.length,bunker:polys.bunker.length,water:polys.water.length,trees:polys.trees.length};
+  out.textContent=JSON.stringify({ok:true,x0,y0,z,px,cell,stats,polys});
+  if(q.get("dbg")){ const col={1:"rgba(120,220,100,.5)",2:"rgba(255,240,180,.7)",3:"rgba(60,140,255,.6)",4:"rgba(0,60,0,.5)"}; for(let i=0;i<G*G;i++){ if(!cls[i]) continue; ctx.fillStyle=col[cls[i]]; ctx.fillRect((i%G)*cell,Math.floor(i/G)*cell,cell,cell); } }
+});
 </script></body></html>
