@@ -38,10 +38,10 @@ function traceView(o){ return new Promise(resolve=>{
     // self-calibration: colour of the green centre (mown grass) is the reference for this hole's imagery
     let ref={h:100,s:0.30,v:0.55};
     if(gx.length===2){ const [gpx,gpy]=toPx(gx[0],gx[1]); const gcx=Math.floor((gpx-x0)/cell), gcy=Math.floor((gpy-y0)/cell); let hh=0,ss=0,vv=0,c=0;
-      for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ const j=(gcy+dy)*G+gcx+dx; if(j<0||j>=G*G) continue; hh+=F[j*4]; ss+=F[j*4+1]; vv+=F[j*4+2]; c++; } if(c) ref={h:hh/c,s:ss/c,v:vv/c}; }
+      for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ const j=(gcy+dy)*G+gcx+dx; if(j<0||j>=G*G) continue; hh+=F[j*4]; ss+=F[j*4+1]; vv+=F[j*4+2]; c++; } if(c){ const r2={h:hh/c,s:ss/c,v:vv/c}; if(r2.h>=80&&r2.h<=130&&r2.v>=0.40) ref=r2; } }
     const P=Object.assign({dh:22, dv:0.13, ds:0.16, ft2:0.05, wv:0.30, wt:0.02, sv:0.12, ss:0.30},o.P||{});
     for(let i=0;i<G*G;i++){ const hh=F[i*4], s=F[i*4+1], v=F[i*4+2], t2=T2[i]; let k=0;
-      if(v>ref.v+P.sv&&s<P.ss) k=2;                                                         // sand: clearly paler than mown grass
+      if(s<0.26&&v>ref.v+0.04&&(hh<75||hh>150||s<0.15)) k=2;                                 // sand: pale and not green
       else if(hh>=165&&hh<=235&&v<P.wv&&s>0.25&&t2<P.wt) k=3;                                 // water: teal, dark, very flat
       else if(Math.abs(hh-ref.h)<=P.dh&&v>=ref.v-P.dv&&Math.abs(s-ref.s)<=P.ds&&t2<P.ft2) k=1; // mown: like the green
       else if(hh>=50&&hh<=175&&(v<ref.v-0.25||t2>=P.ft2)) k=4;                                // trees / scrub
