@@ -1,0 +1,22 @@
+name: trace
+on:
+  push:
+    branches: [trace]
+permissions:
+  contents: write
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm i playwright@1.47.0 && npx playwright install --with-deps chromium
+      - run: mkdir -p preview/out && (python3 -m http.server 8765 >/dev/null 2>&1 &) && sleep 1 && node preview/trace.js 2>&1 | tee preview/out/trace.log
+      - name: publish to the traced branch
+        run: |
+          rm -rf /tmp/pub && mkdir /tmp/pub && cp preview/out/* /tmp/pub/ && cd /tmp/pub
+          git init -q -b traced && git config user.name trace-bot && git config user.email bot@example.com
+          git add -A && git commit -q -m "trace $(date -u +%H:%M)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" traced
