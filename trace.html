@@ -20,14 +20,16 @@ const out=document.getElementById("out");
 const loads=[];
 for(let tX=Math.floor(x0/256); tX<=Math.floor((x0+px-1)/256); tX++) for(let tY=Math.floor(y0/256); tY<=Math.floor((y0+px-1)/256); tY++){
   loads.push(new Promise(res=>{ const im=new Image(); im.crossOrigin="anonymous";
-    im.onload=()=>{ ctx.drawImage(im, tX*256-x0, tY*256-y0); res(1); }; im.onerror=()=>res(0);
+    im.onload=()=>{ ctx.drawImage(im, tX*256-x0, tY*256-y0); res(im.naturalWidth||0); }; im.onerror=()=>res(0);
     im.src=`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${tY}/${tX}`; }));
 }
 Promise.all(loads).then(ok=>{
   let img; try{ img=ctx.getImageData(0,0,px,px).data; }catch(e){ out.textContent=JSON.stringify({ok:false,error:"canvas tainted (no CORS): "+e.message}); return; }
   const G=Math.floor(px/cell); // grid
   const cls=new Uint8Array(G*G); // 0 other,1 fairway,2 sand,3 water,4 trees
-  const stats={fairway:0,sand:0,water:0,trees:0,other:0,tilesLoaded:ok.filter(Boolean).length,tiles:ok.length};
+  const stats={fairway:0,sand:0,water:0,trees:0,other:0,tilesLoaded:ok.filter(Boolean).length,tiles:ok.length,natural:ok.slice(0,3)};
+  { let r=0,g=0,b=0,a=0,cnt=0; for(let i=0;i<img.length;i+=4*997){ r+=img[i];g+=img[i+1];b+=img[i+2];a+=img[i+3];cnt++; } stats.meanRGBA=[r/cnt,g/cnt,b/cnt,a/cnt].map(v=>Math.round(v)); 
+    const samp=[]; for(let k=0;k<6;k++){ const i=((k*170+100)*px+(k*150+80))*4; samp.push([img[i],img[i+1],img[i+2]]); } stats.samples=samp; }
   const hsv=(r,g,b)=>{ r/=255;g/=255;b/=255; const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn; let h=0; if(d){ if(mx===r)h=((g-b)/d)%6; else if(mx===g)h=(b-r)/d+2; else h=(r-g)/d+4; h*=60; if(h<0)h+=360; } return [h, mx?d/mx:0, mx]; };
   const V=new Float32Array(G*G); // brightness for texture
   for(let gy=0;gy<G;gy++) for(let gxi=0;gxi<G;gxi++){
