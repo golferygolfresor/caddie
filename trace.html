@@ -109,10 +109,11 @@ async function runCourse(){
     const r=await traceView({lat:centre[0],lng:centre[1],px,z,cell,gx:Gm,greenR,tol:+(q.get("tol")||1.5)});
     if(q.get("dump")){ window.DUMPS=window.DUMPS||{}; window.DUMPS[hno]=C.toDataURL("image/jpeg",0.85); }
     if(!r.ok){ result.holes[hno]={err:r.error}; continue; }
-    const corridor=70; const seg=[ [0,0], toM(Gm) ];
-    const keep=(poly,cor)=>{ const m=poly.map(toM); return m.some(p=>dist2seg(p,seg[0],seg[1])<=cor) ? m.map(p=>[Math.round(p[0]),Math.round(p[1])]) : null; };
+    const corridor=70; const dl=pts.filter(a=>a[1]===9).map(a=>toM([a[4],a[5]])).sort((a,b)=>Math.hypot(...a)-Math.hypot(...b)); const path=[[0,0],...dl,toM(Gm)];
+    const dist2path=p=>{ let d=Infinity; for(let i=1;i<path.length;i++) d=Math.min(d,dist2seg(p,path[i-1],path[i])); return d; };
+    const keep=(poly,cor)=>{ const m=poly.map(toM); return m.some(p=>dist2path(p)<=cor) ? m.map(p=>[Math.round(p[0]),Math.round(p[1])]) : null; };
     const pick=(arr,cor)=>arr.map(p=>keep(p,cor||corridor)).filter(Boolean);
-    result.holes[hno]={len:Math.round(len), f:pick(r.polys.fairway,30), b:pick(r.polys.bunker,45), w:pick(r.polys.water,70), g:pick(r.polys.green,40), s:[r.stats.fairway,r.stats.sand,r.stats.water,r.stats.trees,r.stats.rough], ref:r.stats.ref};
+    result.holes[hno]={len:Math.round(len), f:pick(r.polys.fairway,40), b:pick(r.polys.bunker,45), w:pick(r.polys.water,70), g:pick(r.polys.green,40), s:[r.stats.fairway,r.stats.sand,r.stats.water,r.stats.trees,r.stats.rough], ref:r.stats.ref};
     await emit(result, hno);
   }
   await emit(result, "done"); window.DONE=true;
