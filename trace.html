@@ -39,15 +39,15 @@ function traceView(o){ return new Promise(resolve=>{
     const T2=new Float32Array(G*G);
     for(let y=2;y<G-2;y++) for(let x=2;x<G-2;x++){ let m=0,c=0; for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ m+=V[(y+dy)*G+x+dx]; c++; } m/=c; let v2=0; for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ v2+=(V[(y+dy)*G+x+dx]-m)**2; } T2[y*G+x]=Math.sqrt(v2/c); }
     // self-calibration: colour of the green centre (mown grass) is the reference for this hole's imagery
-    let ref={h:100,s:0.30,v:0.55};
+    let ref={h:145,s:0.40,v:0.45};
     if(gx.length===2){ const [gpx,gpy]=toPx(gx[0],gx[1]); const gcx=Math.floor((gpx-x0)/cell), gcy=Math.floor((gpy-y0)/cell); let hh=0,ss=0,vv=0,c=0;
-      for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ const j=(gcy+dy)*G+gcx+dx; if(j<0||j>=G*G) continue; hh+=F[j*4]; ss+=F[j*4+1]; vv+=F[j*4+2]; c++; } if(c){ const r2={h:hh/c,s:ss/c,v:vv/c}; if(r2.h>=80&&r2.h<=130&&r2.v>=0.40) ref=r2; } }
-    const P=Object.assign({dh:22, dv:0.13, ds:0.16, ft2:0.05, wv:0.30, wt:0.02, sv:0.12, ss:0.30},o.P||{});
+      for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ const j=(gcy+dy)*G+gcx+dx; if(j<0||j>=G*G) continue; hh+=F[j*4]; ss+=F[j*4+1]; vv+=F[j*4+2]; c++; } if(c){ const r2={h:hh/c,s:ss/c,v:vv/c}; if(r2.h>=80&&r2.h<=175&&r2.v>=0.30) ref=r2; } }
+    const P=Object.assign({dh:25, dv:0.13, ds:0.18, ft2:0.05, wv:0.30, wt:0.015},o.P||{});
     for(let i=0;i<G*G;i++){ const hh=F[i*4], s=F[i*4+1], v=F[i*4+2], t2=T2[i]; let k=0;
-      if((v>ref.v+0.12&&s<0.30)||(s<0.20&&v>ref.v+0.05&&(hh<70||hh>160))) k=2;                 // sand: pale (strict) or desaturated non-green (loose)
-      else if(hh>=165&&hh<=235&&v<P.wv&&s>0.25&&t2<P.wt) k=3;                                 // water: teal, dark, very flat
+      if((v>ref.v+0.15&&s<0.30)||(s<0.22&&v>ref.v+0.08&&(hh<70||hh>160))) k=2;                 // sand: pale (strict) or desaturated non-green (loose)
+      else if(hh>=180&&hh<=240&&v<P.wv&&s>0.30&&t2<P.wt) k=3;                                 // water: teal, dark, very flat
       else if(Math.abs(hh-ref.h)<=P.dh&&v>=ref.v-P.dv&&Math.abs(s-ref.s)<=P.ds&&t2<P.ft2) k=1; // mown: like the green
-      else if(hh>=50&&hh<=175&&(v<ref.v-0.25||t2>=P.ft2)) k=4;                                // trees / scrub
+      else if(hh>=50&&hh<=240&&(v<ref.v-0.2||t2>=P.ft2)) k=4;                                // trees / scrub
       else if(hh>=50&&hh<=175) k=5; cls[i]=k; }
     stats_ref=ref;
     for(let pass=0;pass<2;pass++){ const nc=new Uint8Array(cls); for(let y=1;y<G-1;y++) for(let x=1;x<G-1;x++){ const cnt=[0,0,0,0,0,0]; for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++) cnt[cls[(y+dy)*G+x+dx]]++; let best=0; for(let k=1;k<6;k++) if(cnt[k]>cnt[best]) best=k; nc[y*G+x]=best; } cls.set(nc); }
