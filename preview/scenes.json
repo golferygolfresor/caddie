@@ -1,0 +1,6 @@
+[
+  {"name":"sultan9-hybrid","state":{"course":"api:0121242800342292","hole":9,"view":"hybrid"},"at":0.45},
+  {"name":"sultan9-drawn","state":{"course":"api:0121242800342292","hole":9,"view":"hole"},"at":0.45},
+  {"name":"sultan11-hybrid","state":{"course":"api:0121242800342292","hole":11,"view":"hybrid"},"at":0.6},
+  {"name":"carya13-hybrid","state":{"course":"api:0121233434539341","hole":13,"view":"hybrid"},"at":0.3}
+]
