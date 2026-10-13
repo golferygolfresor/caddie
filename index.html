@@ -677,6 +677,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
 <script src="leaflet.js"></script>
 <script src="holes.js"></script>
 <script src="courses.js"></script>
+<script src="shapes.js"></script>
 <style>
   #map{height:42vh;min-height:260px;max-height:420px;border-radius:10px;border:1px solid var(--line);margin-bottom:12px;background:#dfe6d8}
   .gpsbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
@@ -1521,6 +1522,7 @@ function renderHoleView(){
   const shots=holeShots().map(s=>rot(s.lat,s.lng));
   // bounds → viewBox 360×520 with padding; y flipped (up = north along hole)
   const all=[...line,...feats.map(f=>f.xy),...shots]; if(me) all.push(me);
+  { const sp=state.course.startsWith("api:")&&window.SHAPES&&window.SHAPES[state.course.slice(4)]&&window.SHAPES[state.course.slice(4)][state.hole]; if(sp) [...sp.f,...sp.g].forEach(poly=>poly.forEach(([ex,ny])=>all.push([ex*cs-ny*sn, ex*sn+ny*cs]))); }
   let minX=Math.min(...all.map(a=>a[0]))-40, maxX=Math.max(...all.map(a=>a[0]))+40, minY=Math.min(...all.map(a=>a[1]))-30, maxY=Math.max(...all.map(a=>a[1]))+40;
   const W=360,H=520; const sc=Math.min(W/(maxX-minX), H/(maxY-minY)); const ox=(W-(maxX-minX)*sc)/2, oy=(H-(maxY-minY)*sc)/2;
   const X=a=>ox+(a[0]-minX)*sc, Y=a=>H-oy-(a[1]-minY)*sc;
@@ -1530,7 +1532,13 @@ function renderHoleView(){
   s+=`<rect width="${W}" height="${H}" fill="url(#g)" opacity=".35"/><defs><radialGradient id="g" cx="50%" cy="40%" r="70%"><stop offset="0" stop-color="#3C7A4F"/><stop offset="1" stop-color="#1F4A2E"/></radialGradient></defs>`;
   // fairway band along the centreline (no outline data: drawn as a generous corridor), narrows into the green
   const fw=50*sc; const m=metaFor(); const par=m&&m.par;
-  if(!(par===3)) s+=`<polyline points="${line.map(P).join(" ")}" fill="none" stroke="#7CB46B" stroke-width="${fw}" stroke-linecap="round" stroke-linejoin="round" opacity=".95"/>`;
+  const shp = state.course.startsWith("api:") && window.SHAPES && window.SHAPES[state.course.slice(4)] && window.SHAPES[state.course.slice(4)][state.hole];
+  // traced shapes are metre offsets from the front tee: rotate into the hole frame (tee = origin of our frame too)
+  const shpRot = pts => pts.map(([ex,ny]) => [ex*cs - ny*sn, ex*sn + ny*cs]);
+  if(shp && shp.f.length){ shp.f.forEach(poly=>{ s+=`<polygon points="${shpRot(poly).map(P).join(" ")}" fill="#7CB46B" opacity=".95"/>`; }); }
+  else if(!(par===3)) s+=`<polyline points="${line.map(P).join(" ")}" fill="none" stroke="#7CB46B" stroke-width="${fw}" stroke-linecap="round" stroke-linejoin="round" opacity=".95"/>`;
+  if(shp){ shp.w.forEach(poly=>{ s+=`<polygon points="${shpRot(poly).map(P).join(" ")}" fill="#4FA3E8" opacity=".9"/>`; });
+           shp.b.forEach(poly=>{ s+=`<polygon points="${shpRot(poly).map(P).join(" ")}" fill="#F3E6B8" stroke="#C9B57A" stroke-width=".8"/>`; }); }
   s+=`<polyline points="${line.map(P).join(" ")}" fill="none" stroke="#fff" stroke-width="1.2" stroke-dasharray="4 5" opacity=".7"/>`;
   // distance arcs from the player (or from the tee) every 50 m
   const origin=me||line[0]; for(let d=50; d<=300; d+=50){ const r=d*sc; if(r>H*1.3) break;
@@ -1538,7 +1546,8 @@ function renderHoleView(){
   // green: ellipse through front/middle/back when known, else circle
   const gf=feats.find(p=>p.poi===1&&p.loc===1), gb=feats.find(p=>p.poi===1&&p.loc===3), gm=feats.find(p=>p.poi===1&&p.loc===2)||{xy:line[line.length-1]};
   const depth = gf&&gb ? Math.hypot(gb.xy[0]-gf.xy[0],gb.xy[1]-gf.xy[1]) : 30; const gang = gf&&gb ? Math.atan2(gb.xy[0]-gf.xy[0], gb.xy[1]-gf.xy[1]) : 0;
-  s+=`<g transform="translate(${X(gm.xy)},${Y(gm.xy)}) rotate(${(gang*180/Math.PI).toFixed(1)})"><ellipse rx="${(depth*0.42*sc).toFixed(1)}" ry="${(depth*0.55*sc).toFixed(1)}" fill="#A8E08A" stroke="#DFF5C8" stroke-width="1.5"/></g>`;
+  if(shp && shp.g.length){ shp.g.forEach(poly=>{ s+=`<polygon points="${shpRot(poly).map(P).join(" ")}" fill="#A8E08A" stroke="#DFF5C8" stroke-width="1.5"/>`; }); }
+  else s+=`<g transform="translate(${X(gm.xy)},${Y(gm.xy)}) rotate(${(gang*180/Math.PI).toFixed(1)})"><ellipse rx="${(depth*0.42*sc).toFixed(1)}" ry="${(depth*0.55*sc).toFixed(1)}" fill="#A8E08A" stroke="#DFF5C8" stroke-width="1.5"/></g>`;
   if(gf) s+=`<text x="${X(gf.xy)+10}" y="${Y(gf.xy)+4}" font-size="9" fill="#fff" opacity=".8">F</text>`;
   if(gb) s+=`<text x="${X(gb.xy)+10}" y="${Y(gb.xy)+4}" font-size="9" fill="#fff" opacity=".8">B</text>`;
   // hazards
