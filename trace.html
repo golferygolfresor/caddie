@@ -11,6 +11,7 @@
 const q=new URLSearchParams(location.search);
 const out=document.getElementById("out");
 const C=document.getElementById("c"); const ctx=C.getContext("2d",{willReadFrequently:true});
+let stats_ref=null;
 function traceView(o){ return new Promise(resolve=>{
   const lat=o.lat, lng=o.lng, z=o.z||18, px=o.px||1024, cell=o.cell||4, gx=o.gx||[];
   const n=256*Math.pow(2,z);
@@ -34,11 +35,18 @@ function traceView(o){ return new Promise(resolve=>{
       r/=c;g/=c;b/=c; const [hh,s,v]=hsv(r,g,b); const j=gy*G+gxi; V[j]=v; F[j*4]=hh; F[j*4+1]=s; F[j*4+2]=v; }
     const T2=new Float32Array(G*G);
     for(let y=2;y<G-2;y++) for(let x=2;x<G-2;x++){ let m=0,c=0; for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ m+=V[(y+dy)*G+x+dx]; c++; } m/=c; let v2=0; for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ v2+=(V[(y+dy)*G+x+dx]-m)**2; } T2[y*G+x]=Math.sqrt(v2/c); }
-    const P=Object.assign({fh1:70,fh2:118,fv:0.47,ft2:0.045,wv:0.26,wt:0.025,sv:0.55,ss:0.30},o.P||{});
+    // self-calibration: colour of the green centre (mown grass) is the reference for this hole's imagery
+    let ref={h:100,s:0.30,v:0.55};
+    if(gx.length===2){ const [gpx,gpy]=toPx(gx[0],gx[1]); const gcx=Math.floor((gpx-x0)/cell), gcy=Math.floor((gpy-y0)/cell); let hh=0,ss=0,vv=0,c=0;
+      for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ const j=(gcy+dy)*G+gcx+dx; if(j<0||j>=G*G) continue; hh+=F[j*4]; ss+=F[j*4+1]; vv+=F[j*4+2]; c++; } if(c) ref={h:hh/c,s:ss/c,v:vv/c}; }
+    const P=Object.assign({dh:22, dv:0.13, ds:0.16, ft2:0.05, wv:0.30, wt:0.02, sv:0.12, ss:0.30},o.P||{});
     for(let i=0;i<G*G;i++){ const hh=F[i*4], s=F[i*4+1], v=F[i*4+2], t2=T2[i]; let k=0;
-      if(v>P.sv&&s<P.ss) k=2; else if(hh>=120&&hh<=260&&v<P.wv&&t2<P.wt&&s>0.2) k=3;
-      else if(hh>=P.fh1&&hh<=P.fh2&&v>=P.fv&&s>=0.15&&s<=0.50&&t2<P.ft2) k=1;
-      else if(hh>=50&&hh<=175&&(v<0.30||t2>=P.ft2)) k=4; else if(hh>=50&&hh<=175) k=5; cls[i]=k; }
+      if(v>ref.v+P.sv&&s<P.ss) k=2;                                                         // sand: clearly paler than mown grass
+      else if(hh>=165&&hh<=235&&v<P.wv&&s>0.25&&t2<P.wt) k=3;                                 // water: teal, dark, very flat
+      else if(Math.abs(hh-ref.h)<=P.dh&&v>=ref.v-P.dv&&Math.abs(s-ref.s)<=P.ds&&t2<P.ft2) k=1; // mown: like the green
+      else if(hh>=50&&hh<=175&&(v<ref.v-0.25||t2>=P.ft2)) k=4;                                // trees / scrub
+      else if(hh>=50&&hh<=175) k=5; cls[i]=k; }
+    stats_ref=ref;
     for(let pass=0;pass<2;pass++){ const nc=new Uint8Array(cls); for(let y=1;y<G-1;y++) for(let x=1;x<G-1;x++){ const cnt=[0,0,0,0,0,0]; for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++) cnt[cls[(y+dy)*G+x+dx]]++; let best=0; for(let k=1;k<6;k++) if(cnt[k]>cnt[best]) best=k; nc[y*G+x]=best; } cls.set(nc); }
     const cellM=cell*mPerPx;
     function components(k){ const seen=new Uint8Array(G*G); const comps=[]; for(let i=0;i<G*G;i++){ if(cls[i]!==k||seen[i]) continue; const stack=[i], cellsIn=[]; seen[i]=1; while(stack.length){ const j=stack.pop(); cellsIn.push(j); const y=Math.floor(j/G), x=j%G; [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dy])=>{ const nx=x+dx, ny=y+dy; if(nx<0||ny<0||nx>=G||ny>=G) return; const jj=ny*G+nx; if(cls[jj]===k&&!seen[jj]){ seen[jj]=1; stack.push(jj); } }); } comps.push(cellsIn); } return comps; }
@@ -60,13 +68,16 @@ function traceView(o){ return new Promise(resolve=>{
     const polysFor=(k,minArea,maxArea)=>components(k).filter(c=>{ const a=c.length*cellM*cellM; return a>=minArea&&(!maxArea||a<=maxArea); }).map(c=>simplify(outline(c),tol).map(toLatLng)).filter(p=>p.length>=4);
     const compact=c=>{ const xs=c.map(j=>j%G), ys=c.map(j=>Math.floor(j/G)); const w=Math.max(...xs)-Math.min(...xs)+1, hh=Math.max(...ys)-Math.min(...ys)+1; return c.length/(w*hh) > 0.35 && Math.max(w,hh)/Math.min(w,hh) < 4; };
     const bunker=components(2).filter(c=>{ const a=c.length*cellM*cellM; return a>=20&&a<=2500&&compact(c); }).map(c=>simplify(outline(c),1.0).map(toLatLng)).filter(p=>p.length>=4);
-    const polys={fairway:polysFor(1,1200), bunker, water:polysFor(3,300), trees:o.trees?polysFor(4,400):[]};
+    const fill=c=>{ const xs=c.map(j=>j%G), ys=c.map(j=>Math.floor(j/G)); const w=Math.max(...xs)-Math.min(...xs)+1, hh=Math.max(...ys)-Math.min(...ys)+1; return c.length/(w*hh); };
+    const water=components(3).filter(c=>{ const a=c.length*cellM*cellM; return a>=1500&&fill(c)>0.35; }).map(c=>simplify(outline(c),tol).map(toLatLng)).filter(p=>p.length>=4);
+    const bunker2=components(2).filter(c=>{ const a=c.length*cellM*cellM; return a>=25&&a<=1200&&compact(c); }).map(c=>simplify(outline(c),1.0).map(toLatLng)).filter(p=>p.length>=4);
+    const polys={fairway:polysFor(1,800), bunker:bunker2, water, trees:o.trees?polysFor(4,400):[]};
     polys.green=[];
     if(gx.length===2){ const [gpx,gpy]=toPx(gx[0],gx[1]); const gcx=Math.floor((gpx-x0)/cell), gcy=Math.floor((gpy-y0)/cell);
       const comp=components(1).find(c=>c.includes(gcy*G+gcx)); const rad=(o.greenR||26)/cellM;
       const cellsIn = comp ? comp.filter(j=>{ const y=Math.floor(j/G), x=j%G; return Math.hypot(x-gcx,y-gcy)<=rad; }) : [];
       if(cellsIn.length>=4) polys.green=[simplify(outline(cellsIn),1.0).map(toLatLng)]; }
-    const stats={tiles:ok.length,tilesLoaded:ok.filter(Boolean).length,cellMetres:+cellM.toFixed(2)}; ["fairway","sand","water","trees","rough","other"].forEach((nm,i)=>stats[nm]=0);
+    const stats={tiles:ok.length,tilesLoaded:ok.filter(Boolean).length,cellMetres:+cellM.toFixed(2),ref:stats_ref&&{h:Math.round(stats_ref.h),s:+stats_ref.s.toFixed(2),v:+stats_ref.v.toFixed(2)}}; ["fairway","sand","water","trees","rough","other"].forEach((nm,i)=>stats[nm]=0);
     for(let i=0;i<G*G;i++) stats[["other","fairway","sand","water","trees","rough"][cls[i]]]++;
     resolve({ok:true,stats,polys});
   });
@@ -89,9 +100,9 @@ async function runCourse(){
     const r=await traceView({lat:centre[0],lng:centre[1],px,gx:Gm,tol:+(q.get("tol")||1.5)});
     if(!r.ok){ result.holes[hno]={err:r.error}; continue; }
     const corridor=70; const seg=[ [0,0], toM(Gm) ];
-    const keep=poly=>{ const m=poly.map(toM); return m.some(p=>dist2seg(p,seg[0],seg[1])<=corridor) ? m.map(p=>[Math.round(p[0]),Math.round(p[1])]) : null; };
-    const pick=arr=>arr.map(keep).filter(Boolean);
-    result.holes[hno]={len:Math.round(len), f:pick(r.polys.fairway), b:pick(r.polys.bunker), w:pick(r.polys.water), g:pick(r.polys.green), s:[r.stats.fairway,r.stats.sand,r.stats.water,r.stats.trees,r.stats.rough]};
+    const keep=(poly,cor)=>{ const m=poly.map(toM); return m.some(p=>dist2seg(p,seg[0],seg[1])<=cor) ? m.map(p=>[Math.round(p[0]),Math.round(p[1])]) : null; };
+    const pick=(arr,cor)=>arr.map(p=>keep(p,cor||corridor)).filter(Boolean);
+    result.holes[hno]={len:Math.round(len), f:pick(r.polys.fairway,30), b:pick(r.polys.bunker,45), w:pick(r.polys.water,70), g:pick(r.polys.green,40), s:[r.stats.fairway,r.stats.sand,r.stats.water,r.stats.trees,r.stats.rough], ref:r.stats.ref};
     await emit(result, hno);
   }
   await emit(result, "done");
