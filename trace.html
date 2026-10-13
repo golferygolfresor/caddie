@@ -99,7 +99,7 @@ async function runCourse(){
 async function emit(obj, tag){
   const json=JSON.stringify(obj); const cs=new CompressionStream("deflate-raw"); const w=cs.writable.getWriter(); w.write(new TextEncoder().encode(json)); w.close();
   const buf=await new Response(cs.readable).arrayBuffer(); let bin=""; new Uint8Array(buf).forEach(b=>bin+=String.fromCharCode(b));
-  out.textContent=`CADDIE:${tag}:${json.length}:`+btoa(bin);
+  out.textContent=`CADDIE:${tag}:${json.length}:`+btoa(bin)+"\n"+(tag==="done"?"PAD\n"+("x".repeat(99)+"\n").repeat(900):"");
 }
 if(q.get("course")){ const s=document.createElement("script"); s.src="courses.js"; s.onload=runCourse; document.head.appendChild(s); }
 else if(q.get("lat")){ traceView({lat:+q.get("lat"),lng:+q.get("lng"),z:+(q.get("z")||18),px:+(q.get("px")||1024),gx:(q.get("gx")||"").split(",").map(Number).filter(x=>!isNaN(x)),trees:true}).then(r=>out.textContent=JSON.stringify(q.get("only")==="stats"?{ok:r.ok,stats:r.stats}:r)); }
