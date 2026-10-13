@@ -1,8 +1,7 @@
 // Caddie service worker: app shell works offline; map tiles are cached as you see them.
-const SHELL = "caddie-shell-v1";
+const SHELL = "caddie-shell-v2";
 const TILES = "caddie-tiles-v1";
-const SHELL_FILES = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png",
-  "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"];
+const SHELL_FILES = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png", "./holes.js", "./leaflet.js"];;
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES)).then(() => self.skipWaiting()));

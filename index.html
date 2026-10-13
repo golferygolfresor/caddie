@@ -674,7 +674,8 @@ svg.leaflet-image-layer.leaflet-interactive path {
 		}
 	}
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="leaflet.js"></script>
+<script src="holes.js"></script>
 <style>
   #map{height:42vh;min-height:260px;max-height:420px;border-radius:10px;border:1px solid var(--line);margin-bottom:12px;background:#dfe6d8}
   .gpsbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
@@ -780,6 +781,17 @@ svg.leaflet-image-layer.leaflet-interactive path {
   .month th,.month td{padding:5px 4px;border-bottom:1px solid var(--line);text-align:right}
   .month th:first-child,.month td:first-child{text-align:left}
   @media (max-width:480px){.suntimes{grid-template-columns:1fr 1fr}}
+  /* ---- course tab: compact on phones ---- */
+  @media (max-width:640px){
+    #tab-gps h2,#tab-gps .lead,#tab-gps ~ .install{display:none}
+    #tab-gps .install{display:none}
+    #tab-gps .panel{padding:10px}
+    #tab-gps .row{margin-bottom:8px}
+    .holes{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+    .holes::-webkit-scrollbar{display:none}
+    .holes button{flex:0 0 40px;height:40px;font-size:16px}
+    #map{height:46vh;min-height:300px}
+  }
 </style>
 </head>
 <body>
@@ -846,6 +858,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
     </div>
     <div class="holes" id="holes"></div>
     <div id="map"></div>
+    <p class="note" id="holeInfo" style="margin:-4px 0 10px"></p>
     <div class="live">
       <div class="stat"><div class="num" id="dFlag">–</div><span>m to flag</span></div>
       <div class="stat"><div class="num" id="dClub">–</div><span>club for that</span></div>
@@ -855,6 +868,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
       <button class="primary" id="locBtn">Start GPS</button>
       <button class="ghost" id="flagBtn">Place flag by tap</button>
       <button class="ghost" id="centreBtn">Centre on me</button>
+      <button class="ghost" id="osmBtn">Load holes from map data</button>
     </div>
     <div class="row">
       <div class="field"><label for="shotClub">Club in hand</label><select id="shotClub"></select></div>
@@ -1064,7 +1078,7 @@ const CLUBS = [
 const LEVEL_SPREAD = {new:0.20, mid:0.12, steady:0.07};
 
 const state = { seven:120, level:"new", mode:"carry", overrides:{}, log:[],
-  course:"carya", hole:1, flags:{}, shots:[], round:{course:null, date:null} };
+  course:"carya", hole:1, flags:{}, shots:[], osmHoles:{}, round:{course:null, date:null} };
 
 /* ---------- storage (persists in artifact storage when available) ---------- */
 async function load(){
@@ -1253,24 +1267,20 @@ function renderCoach(){
 /* ---------- course GPS ---------- */
 /* Centre points of the Belek courses (approximate — zoom and check). Flags are placed by you, per hole. */
 const COURSES = [
-  {id:"carya",   name:"Carya Golf Club (Regnum)",          lat:36.8445, lng:31.0140},
-  {id:"montg",   name:"Montgomerie Maxx Royal",           lat:36.8625, lng:31.0390},
-  {id:"national",name:"National Golf Club",               lat:36.8490, lng:31.0410},
-  {id:"kaya",    name:"Kaya Palazzo Golf Club",           lat:36.8500, lng:31.0500},
-  {id:"titanic", name:"Titanic Golf Club",                lat:36.8530, lng:31.0540},
-  {id:"nobilis", name:"Robinson Nobilis Golf",            lat:36.8610, lng:31.0620},
-  {id:"agcsul",  name:"Antalya Golf Club — PGA Sultan",   lat:36.8585, lng:31.0660},
-  {id:"agcpas",  name:"Antalya Golf Club — Pasha",        lat:36.8560, lng:31.0700},
-  {id:"cornelia",name:"Cornelia Golf Club (Faldo)",       lat:36.8515, lng:31.0690},
-  {id:"suenop",  name:"Sueno Pines",                      lat:36.8600, lng:31.0760},
-  {id:"suenod",  name:"Sueno Dunes",                      lat:36.8640, lng:31.0790},
-  {id:"tat",     name:"TAT International Golf",           lat:36.8400, lng:31.0830},
-  {id:"sirene",  name:"Sirene Golf (Sultan / Pasha side)",lat:36.8650, lng:31.0900},
-  {id:"gloriao", name:"Gloria Old Course",                lat:36.8390, lng:31.1110},
-  {id:"glorian", name:"Gloria New Course",                lat:36.8440, lng:31.1140},
-  {id:"gloriav", name:"Gloria Verde",                     lat:36.8360, lng:31.1170},
-  {id:"lykia",   name:"Lykia Links (Denizyaka)",          lat:36.6660, lng:31.2830},
-  {id:"other",   name:"Other course (centre on me)",      lat:36.8600, lng:31.0600},
+  {id:"carya",   name:"Carya Golf Club (Regnum)",             lat:36.8664, lng:31.0107, bbox:[36.862,31.002,36.872,31.022]},
+  {id:"montg",   name:"Montgomerie Maxx Royal",              lat:36.8553, lng:31.0627, bbox:[36.849,31.055,36.861,31.075]},
+  {id:"national",name:"National Golf Club",                  lat:36.8701, lng:30.9830, bbox:[36.862,30.978,36.877,30.989]},
+  {id:"titanic", name:"Titanic Golf Club",                   lat:36.8665, lng:30.9767, bbox:[36.861,30.969,36.872,30.981]},
+  {id:"cullinan",name:"Cullinan Links",                      lat:36.8609, lng:30.9681, bbox:[36.856,30.961,36.866,30.974]},
+  {id:"kaya",    name:"Kaya Palazzo Golf Club",              lat:36.8630, lng:30.9990, bbox:[36.856,30.990,36.870,31.006]},
+  {id:"agc",     name:"Antalya Golf Club — PGA Sultan / Pasha (Sirene)", lat:36.8682, lng:30.9956, bbox:[36.860,30.986,36.877,31.005]},
+  {id:"cornelia",name:"Cornelia Golf Club (Faldo)",          lat:36.8592, lng:31.0476, bbox:[36.852,31.040,36.868,31.058]},
+  {id:"sueno",   name:"Sueno Pines / Dunes",                 lat:36.8621, lng:31.0268, bbox:[36.855,31.015,36.870,31.055]},
+  {id:"tat",     name:"TAT International Golf",              lat:36.8600, lng:30.9852, bbox:[36.852,30.978,36.866,30.994]},
+  {id:"nobilis", name:"Robinson Nobilis Golf",               lat:36.8445, lng:31.1150, bbox:[36.838,31.105,36.850,31.126]},
+  {id:"gloria",  name:"Gloria Old / New / Verde",            lat:36.8483, lng:31.0939, bbox:[36.842,31.080,36.855,31.111]},
+  {id:"lykia",   name:"Lykia Links",                         lat:36.8321, lng:31.1876, bbox:[36.824,31.178,36.840,31.198]},
+  {id:"other",   name:"Other course (centre on me)",         lat:36.8600, lng:31.0600, bbox:null},
 ];
 let map, meMarker, accCircle, flagMarker, shotLayer, watchId=null, mePos=null, placing=false, lastFix=0;
 const TILES = {
@@ -1282,6 +1292,30 @@ function haversine(a,b){ const R=6371000,toR=x=>x*Math.PI/180; const dLat=toR(b.
   const s=Math.sin(dLat/2)**2+Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLng/2)**2; return 2*R*Math.asin(Math.sqrt(s)); }
 function courseObj(){ return COURSES.find(c=>c.id===state.course)||COURSES[0]; }
 function flagKey(){ return state.course+":"+state.hole; }
+
+/* ---------- hole centrelines: bundled (holes.js) + loaded from OpenStreetMap (saved in state) ---------- */
+function holeLine(){ const src=(state.osmHoles&&state.osmHoles[state.course])||window.HOLES[state.course]; return src&&src[state.hole]; }
+function courseHasHoles(){ return !!((state.osmHoles&&state.osmHoles[state.course])||window.HOLES[state.course]); }
+function autoFlag(){ // if no flag placed by hand, use the mapped green
+  if(state.flags[flagKey()]) return state.flags[flagKey()];
+  const ln=holeLine(); if(!ln) return null; const g=ln[ln.length-1]; return {lat:g[0],lng:g[1],auto:true};
+}
+function holeLength(){ const ln=holeLine(); if(!ln) return null; let d=0; for(let i=1;i<ln.length;i++) d+=haversine({lat:ln[i-1][0],lng:ln[i-1][1]},{lat:ln[i][0],lng:ln[i][1]}); return Math.round(d); }
+async function loadOsmHoles(){
+  const c=courseObj(); if(!c.bbox){ alert("Pick a named course first."); return; }
+  const btn=document.getElementById("osmBtn"); btn.textContent="Loading…"; btn.disabled=true;
+  const q=`[out:json][timeout:60];way["golf"="hole"](${c.bbox.join(",")});out tags geom;`;
+  const servers=["https://overpass-api.de/api/interpreter","https://lz4.overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
+  let data=null;
+  for(const s of servers){ try{ const r=await fetch(s+"?data="+encodeURIComponent(q)); if(r.ok){ data=await r.json(); if(data.elements) break; } }catch(e){} }
+  btn.disabled=false;
+  if(!data||!data.elements||!data.elements.length){ btn.textContent="Load holes from map data"; alert("No hole lines are mapped for this course yet (or the map server is busy — try again in a minute). You can still place flags by tapping the green."); return; }
+  const out={}; data.elements.forEach(w=>{ const n=parseInt(w.tags&&w.tags.ref); if(n>=1&&n<=18&&w.geometry&&w.geometry.length>=2) out[n]=w.geometry.map(p=>[p.lat,p.lon]); });
+  const n=Object.keys(out).length; if(!n){ btn.textContent="Load holes from map data"; alert("Found course data but no numbered holes."); return; }
+  state.osmHoles=state.osmHoles||{}; state.osmHoles[state.course]=out; save();
+  btn.textContent=`Loaded ${n} holes ✓`; renderHoles(); drawHole();
+}
+document.getElementById("osmBtn").addEventListener("click",loadOsmHoles);
 function initMap(){
   if(map) return;
   const c=courseObj();
@@ -1290,7 +1324,7 @@ function initMap(){
   shotLayer=L.layerGroup().addTo(map);
   map.on("click",e=>{ if(placing){ setFlag(e.latlng); placing=false; document.getElementById("flagBtn").textContent="Place flag by tap"; }});
   const sel=document.getElementById("course"); sel.innerHTML=COURSES.map(c=>`<option value="${c.id}">${c.name}</option>`).join(""); sel.value=state.course;
-  sel.addEventListener("change",e=>{ state.course=e.target.value; const k=courseObj(); map.setView([k.lat,k.lng],16); save(); renderHoles(); drawHole(); });
+  sel.addEventListener("change",e=>{ state.course=e.target.value; state.hole=1; const k=courseObj(); map.setView([k.lat,k.lng],16); save(); renderHoles(); drawHole(); });
   document.getElementById("unitSel").addEventListener("change",e=>{ map.removeLayer(tileLayer); tileLayer=TILES[e.target.value]().addTo(map); });
   const sc=document.getElementById("shotClub"); sc.innerHTML=CLUBS.map(c=>`<option value="${c.k}">${c.name}</option>`).join(""); sc.value="7i";
   renderHoles(); drawHole(); renderRound(); renderLearned();
@@ -1298,28 +1332,40 @@ function initMap(){
 function renderHoles(){
   const box=document.getElementById("holes"); box.innerHTML="";
   for(let h=1;h<=18;h++){ const b=document.createElement("button"); b.textContent=h;
-    if(h===state.hole) b.classList.add("on"); if(state.flags[state.course+":"+h]) b.classList.add("set");
+    if(h===state.hole) b.classList.add("on"); const src=(state.osmHoles&&state.osmHoles[state.course])||window.HOLES[state.course]; if(state.flags[state.course+":"+h]||(src&&src[h])) b.classList.add("set");
     b.addEventListener("click",()=>{ state.hole=h; save(); renderHoles(); drawHole(); }); box.appendChild(b); }
+  const on=box.querySelector(".on"); if(on&&on.scrollIntoView) on.scrollIntoView({inline:"center",block:"nearest"});
 }
 function setFlag(ll){ state.flags[flagKey()]={lat:ll.lat,lng:ll.lng}; save(); renderHoles(); drawHole(); updateLive(); }
 function holeShots(){ return state.shots.filter(s=>s.course===state.course&&s.hole===state.hole&&s.date===today()); }
 function today(){ return new Date().toISOString().slice(0,10); }
 function drawHole(){
   if(!map) return;
-  const f=state.flags[flagKey()];
+  const f=autoFlag(); const ln=holeLine();
   if(flagMarker){ map.removeLayer(flagMarker); flagMarker=null; }
-  if(f){ flagMarker=L.marker([f.lat,f.lng],{draggable:true,icon:L.divIcon({className:"",html:'<div class="flag-pin">⛳</div>',iconSize:[22,22],iconAnchor:[6,22]})}).addTo(map);
-    flagMarker.on("dragend",e=>setFlag(e.target.getLatLng()));
-    if(!mePos) map.setView([f.lat,f.lng],17); }
   shotLayer.clearLayers();
+  if(ln){
+    L.polyline(ln,{color:"#F8FAF5",weight:3,opacity:.9}).addTo(shotLayer);
+    L.polyline(ln,{color:"#22503C",weight:1.5,opacity:.9,dashArray:"6 6"}).addTo(shotLayer);
+    L.circleMarker(ln[0],{radius:6,color:"#fff",weight:2,fillColor:"#22503C",fillOpacity:1}).bindTooltip("Tee "+state.hole).addTo(shotLayer);
+  }
+  if(f){ flagMarker=L.marker([f.lat,f.lng],{draggable:true,icon:L.divIcon({className:"",html:'<div class="flag-pin">⛳</div>',iconSize:[22,22],iconAnchor:[6,22]})}).addTo(map);
+    flagMarker.on("dragend",e=>setFlag(e.target.getLatLng())); }
+  if(ln){ map.fitBounds(L.latLngBounds(ln),{padding:[30,30],maxZoom:18}); }
+  else if(f&&!mePos){ map.setView([f.lat,f.lng],17); }
   const pts=holeShots().map(s=>[s.lat,s.lng]);
   if(f&&pts.length) pts.push([f.lat,f.lng]);
   if(pts.length>1) L.polyline(pts,{color:"#fff",weight:2,dashArray:"4 6"}).addTo(shotLayer);
   holeShots().forEach((s,i)=>L.marker([s.lat,s.lng],{icon:L.divIcon({className:"",html:`<div class="ball-pin" title="${s.club}"></div>`,iconSize:[10,10],iconAnchor:[5,5]})}).bindTooltip(`${i+1}: ${s.club}`).addTo(shotLayer));
+  const info=document.getElementById("holeInfo"); const len=holeLength();
+  if(ln){ info.textContent=`Hole ${state.hole}: ${len} m along the centreline${ln.length>2?" (dogleg)":""}. Flag set to the green centre — drag it to today's pin position.`; }
+  else if(courseHasHoles()){ info.textContent=`Hole ${state.hole}: not in the map data — tap "Place flag by tap".`; }
+  else { info.textContent=`No hole lines loaded for this course. Tap "Load holes from map data", or place flags by hand.`; }
+  const osmBtn=document.getElementById("osmBtn"); osmBtn.textContent = courseHasHoles()&&!(window.HOLES[state.course]) ? "Reload holes from map data" : "Load holes from map data";
   updateLive();
 }
 function updateLive(){
-  const f=state.flags[flagKey()], hs=holeShots();
+  const f=autoFlag(), hs=holeShots();
   const dF=document.getElementById("dFlag"), dC=document.getElementById("dClub"), dL=document.getElementById("dLast");
   if(mePos&&f){ const d=Math.round(haversine(mePos,f)); dF.textContent=d;
     const lie=document.getElementById("shotLie").value; const fac=(LIES[lie]||LIES.fairway).f;
@@ -1354,7 +1400,7 @@ document.getElementById("ballBtn").addEventListener("click",()=>{
   if(document.getElementById("shotLie").value==="tee") document.getElementById("shotLie").value="fairway";
 });
 document.getElementById("holedBtn").addEventListener("click",()=>{
-  const f=state.flags[flagKey()]; const hs=holeShots();
+  const f=autoFlag(); const hs=holeShots();
   if(!hs.length){ alert("No shots recorded on this hole yet."); return; }
   const putts=parseInt(prompt("Putts on this hole?","2")); if(isNaN(putts)) return;
   state.shots.push({course:state.course,hole:state.hole,date:today(),club:"holed",putts,lat:f?f.lat:mePos.lat,lng:f?f.lng:mePos.lng,ts:Date.now()});
