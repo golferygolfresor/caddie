@@ -844,7 +844,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
 <!-- ============ GPS ============ -->
 <section id="tab-gps" hidden>
   <h2>On the course</h2>
-  <p class="lead">Pick a Belek course, tap the map once per hole to place the flag, then walk. The blue dot is you; the distance to the flag updates as you move. Stand over the ball and press "Ball is here" before each shot — the app measures every shot and learns your real club distances.</p>
+  <p class="lead">Pick a Belek course, tap the map once per hole to place the flag, then walk. The blue dot is you; the distance to the flag updates as you move. Stand over the ball and press "Ball is here" before each shot — the app measures every shot, learns your real club distances, and after one round it has mapped every hole you played (tee and green from GPS).</p>
   <div class="panel">
     <div class="row">
       <div class="field" style="flex:2 1 200px">
@@ -1465,7 +1465,16 @@ document.getElementById("holedBtn").addEventListener("click",()=>{
   const f=autoFlag(); const hs=holeShots();
   if(!hs.length){ alert("No shots recorded on this hole yet."); return; }
   const putts=parseInt(prompt("Putts on this hole?","2")); if(isNaN(putts)) return;
-  state.shots.push({course:state.course,hole:state.hole,date:today(),club:"holed",putts,lat:f?f.lat:mePos.lat,lng:f?f.lng:mePos.lng,ts:Date.now()});
+  // Learn the hole from the round: first tee shot = tee, where you holed out = green (GPS, ±5 m). Only when no mapped line exists yet.
+  const fresh = mePos && (Date.now()-lastFix<30000);
+  const greenPos = fresh ? mePos : (f||null);
+  state.shots.push({course:state.course,hole:state.hole,date:today(),club:"holed",putts,lat:greenPos?greenPos.lat:0,lng:greenPos?greenPos.lng:0,ts:Date.now()});
+  if(!holeLine() && fresh){
+    const teeShot=hs.find(s=>s.lie==="tee")||hs[0];
+    state.osmHoles=state.osmHoles||{}; state.osmHoles[state.course]=state.osmHoles[state.course]||{};
+    state.osmHoles[state.course][state.hole]=[[teeShot.lat,teeShot.lng],[mePos.lat,mePos.lng]];
+    document.getElementById("gpsMsg").textContent=`Hole ${state.hole} learned from this round: tee and green saved (${holeLength()} m).`;
+  }
   save(); renderRound(); renderLearned();
   if(state.hole<18){ state.hole++; save(); renderHoles(); drawHole(); document.getElementById("shotLie").value="tee"; }
 });
