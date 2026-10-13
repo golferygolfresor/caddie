@@ -39,9 +39,13 @@ function traceView(o){ return new Promise(resolve=>{
     const T2=new Float32Array(G*G);
     for(let y=2;y<G-2;y++) for(let x=2;x<G-2;x++){ let m=0,c=0; for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ m+=V[(y+dy)*G+x+dx]; c++; } m/=c; let v2=0; for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ v2+=(V[(y+dy)*G+x+dx]-m)**2; } T2[y*G+x]=Math.sqrt(v2/c); }
     // self-calibration: colour of the green centre (mown grass) is the reference for this hole's imagery
-    let ref={h:145,s:0.40,v:0.45};
-    if(gx.length===2){ const [gpx,gpy]=toPx(gx[0],gx[1]); const gcx=Math.floor((gpx-x0)/cell), gcy=Math.floor((gpy-y0)/cell); let hh=0,ss=0,vv=0,c=0;
-      for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ const j=(gcy+dy)*G+gcx+dx; if(j<0||j>=G*G) continue; hh+=F[j*4]; ss+=F[j*4+1]; vv+=F[j*4+2]; c++; } if(c){ const r2={h:hh/c,s:ss/c,v:vv/c}; if(r2.h>=80&&r2.h<=175&&r2.v>=0.30) ref=r2; } }
+    const sample=(la,lo)=>{ const [spx,spy]=toPx(la,lo); const scx=Math.floor((spx-x0)/cell), scy=Math.floor((spy-y0)/cell); let hh=0,ss=0,vv=0,c=0;
+      for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ const j=(scy+dy)*G+scx+dx; if(scx+dx<0||scx+dx>=G||scy+dy<0||scy+dy>=G) continue; hh+=F[j*4]; ss+=F[j*4+1]; vv+=F[j*4+2]; c++; } return c?{h:hh/c,s:ss/c,v:vv/c}:null; };
+    const grassy=r2=>r2&&r2.h>=80&&r2.h<=180&&r2.v>=0.28&&r2.s>=0.12;
+    // calibration: the fairway sample (a point along the hole) is the reference for mown grass; the green centre for the green itself
+    const gref=gx.length===2?sample(gx[0],gx[1]):null; const fref=(o.fx&&o.fx.length===2)?sample(o.fx[0],o.fx[1]):null;
+    let ref={h:145,s:0.40,v:0.45}; if(grassy(fref)) ref=fref; else if(grassy(gref)) ref=gref;
+    const greenRef=grassy(gref)?gref:ref;
     const P=Object.assign({dh:25, dv:0.13, ds:0.18, ft2:0.05, wv:0.30, wt:0.015},o.P||{});
     for(let i=0;i<G*G;i++){ const hh=F[i*4], s=F[i*4+1], v=F[i*4+2], t2=T2[i]; let k=0;
       if((v>ref.v+0.15&&s<0.30)||(s<0.22&&v>ref.v+0.08&&(hh<70||hh>160))) k=2;                 // sand: pale (strict) or desaturated non-green (loose)
@@ -81,8 +85,10 @@ function traceView(o){ return new Promise(resolve=>{
     const polys={fairway:polysFor(1,800), bunker:bunker2, water, trees:o.trees?polysFor(4,400):[]};
     polys.green=[];
     if(gx.length===2){ const [gpx,gpy]=toPx(gx[0],gx[1]); const gcx=Math.floor((gpx-x0)/cell), gcy=Math.floor((gpy-y0)/cell);
-      const comp=components(1).find(c=>c.includes(gcy*G+gcx)); const rad=(o.greenR||26)/cellM;
-      const cellsIn = comp ? comp.filter(j=>{ const y=Math.floor(j/G), x=j%G; return Math.hypot(x-gcx,y-gcy)<=rad; }) : [];
+      // green: cells near the centre that look like the green surface (its own colour reference), connected to the centre
+      const rad=(o.greenR||26)/cellM; const gm=new Uint8Array(G*G);
+      for(let y=Math.max(0,Math.floor(gcy-rad));y<=Math.min(G-1,Math.ceil(gcy+rad));y++) for(let x=Math.max(0,Math.floor(gcx-rad));x<=Math.min(G-1,Math.ceil(gcx+rad));x++){ const j=y*G+x; if(Math.hypot(x-gcx,y-gcy)>rad) continue; const hh=F[j*4], ss=F[j*4+1], vv=F[j*4+2]; if(cls[j]!==3&&cls[j]!==2&&Math.abs(hh-greenRef.h)<=25&&Math.abs(ss-greenRef.s)<=0.18&&vv>=greenRef.v-0.15&&T2[j]<0.06) gm[j]=1; }
+      const seen=new Uint8Array(G*G); const cellsIn=[]; const st=[gcy*G+gcx]; if(gm[st[0]]){ seen[st[0]]=1; while(st.length){ const j=st.pop(); cellsIn.push(j); const y=Math.floor(j/G), x=j%G; [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dy])=>{ const nx=x+dx, ny=y+dy; if(nx<0||ny<0||nx>=G||ny>=G) return; const jj=ny*G+nx; if(gm[jj]&&!seen[jj]){ seen[jj]=1; st.push(jj); } }); } }
       if(cellsIn.length>=4) polys.green=[simplify(outline(cellsIn),1.0).map(toLatLng)]; }
     const stats={tiles:ok.length,tilesLoaded:ok.filter(Boolean).length,cellMetres:+cellM.toFixed(2),ref:stats_ref&&{h:Math.round(stats_ref.h),s:+stats_ref.s.toFixed(2),v:+stats_ref.v.toFixed(2)}}; ["fairway","sand","water","trees","rough","other"].forEach((nm,i)=>stats[nm]=0);
     for(let i=0;i<G*G;i++) stats[["other","fairway","sand","water","trees","rough"][cls[i]]]++;
@@ -106,7 +112,9 @@ async function runCourse(){
     const px=Math.min(4096, Math.max(768, Math.round((len+160)/mpp/64)*64));
     const centre=[(T[0]+Gm[0])/2,(T[1]+Gm[1])/2];
     const greenR = (gf&&gb) ? Math.max(12, Math.hypot((gb[5]-gf[5])*kx,(gb[4]-gf[4])*ky)/2+5) : 22;
-    const r=await traceView({lat:centre[0],lng:centre[1],px,z,cell,gx:Gm,greenR,tol:+(q.get("tol")||1.5)});
+    let fx=null; { const dlp=pts.filter(a=>a[1]===9).map(a=>[a[4],a[5]]); const pp=[T,...dlp.sort((a,b)=>Math.hypot(...toM(a))-Math.hypot(...toM(b))),Gm]; let total=0; const segs=[]; for(let i=1;i<pp.length;i++){ const d=Math.hypot(toM(pp[i])[0]-toM(pp[i-1])[0],toM(pp[i])[1]-toM(pp[i-1])[1]); segs.push(d); total+=d; }
+      if(total>200){ let want=total*0.55; for(let i=0;i<segs.length;i++){ if(want<=segs[i]){ const t=want/segs[i]; fx=[pp[i][0]+(pp[i+1][0]-pp[i][0])*t, pp[i][1]+(pp[i+1][1]-pp[i][1])*t]; break; } want-=segs[i]; } } }
+    const r=await traceView({lat:centre[0],lng:centre[1],px,z,cell,gx:Gm,fx,greenR,tol:+(q.get("tol")||1.5)});
     if(q.get("dump")){ window.DUMPS=window.DUMPS||{}; window.DUMPS[hno]=C.toDataURL("image/jpeg",0.85); }
     if(!r.ok){ result.holes[hno]={err:r.error}; continue; }
     const corridor=70; const dl=pts.filter(a=>a[1]===9).map(a=>toM([a[4],a[5]])).sort((a,b)=>Math.hypot(...a)-Math.hypot(...b)); const path=[[0,0],...dl,toM(Gm)];
