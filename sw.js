@@ -1,5 +1,5 @@
 // Caddie service worker: app shell works offline; map tiles are cached as you see them.
-const SHELL = "caddie-shell-v3";
+const SHELL = "caddie-shell-v4";
 const TILES = "caddie-tiles-v1";
 const SHELL_FILES = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png", "./holes.js", "./leaflet.js"];;
 

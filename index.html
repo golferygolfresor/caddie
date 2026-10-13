@@ -1274,14 +1274,14 @@ function renderCoach(){
 /* ---------- course GPS ---------- */
 /* Centre points of the Belek courses (approximate — zoom and check). Flags are placed by you, per hole. */
 const COURSES = [
-  {id:"carya",   name:"Carya Golf Club (Regnum)",             lat:36.8664, lng:31.0107, bbox:[36.862,31.002,36.872,31.022]},
+  {id:"carya",   name:"Carya Golf Club (Regnum)",             lat:36.8664, lng:31.0107, bbox:[36.862,31.0035,36.872,31.022]},
   {id:"montg",   name:"Montgomerie Maxx Royal",              lat:36.8553, lng:31.0627, bbox:[36.849,31.055,36.861,31.075]},
   {id:"national",name:"National Golf Club",                  lat:36.8701, lng:30.9830, bbox:[36.862,30.978,36.877,30.989]},
   {id:"titanic", name:"Titanic Golf Club",                   lat:36.8665, lng:30.9767, bbox:[36.861,30.969,36.872,30.981]},
   {id:"cullinan",name:"Cullinan Links",                      lat:36.8609, lng:30.9681, bbox:[36.856,30.961,36.866,30.974]},
-  {id:"kaya",    name:"Kaya Palazzo Golf Club",              lat:36.8630, lng:30.9990, bbox:[36.856,30.990,36.870,31.006]},
-  {id:"agcsultan",name:"Antalya Golf Club — PGA Sultan",     lat:36.8662, lng:30.9950, bbox:[36.858,30.984,36.878,31.006]},
-  {id:"agcpasha", name:"Antalya Golf Club — The Pasha",      lat:36.8700, lng:30.9960, bbox:[36.858,30.984,36.878,31.006]},
+  {id:"kaya",    name:"Kaya Palazzo Golf Club",              lat:36.8630, lng:30.9990, bbox:[36.856,30.9900,36.870,31.0030]},
+  {id:"agcsultan",name:"Antalya Golf Club — PGA Sultan",     lat:36.8662, lng:30.9950, bbox:[36.858,30.9865,36.878,31.0025]},
+  {id:"agcpasha", name:"Antalya Golf Club — The Pasha",      lat:36.8700, lng:30.9960, bbox:[36.858,30.9865,36.878,31.0025]},
   {id:"cornelia",name:"Cornelia Golf Club (Faldo)",          lat:36.8592, lng:31.0476, bbox:[36.852,31.040,36.868,31.058]},
   {id:"sueno",   name:"Sueno Pines / Dunes",                 lat:36.8621, lng:31.0268, bbox:[36.855,31.015,36.870,31.055]},
   {id:"tat",     name:"TAT International Golf",              lat:36.8600, lng:30.9852, bbox:[36.852,30.978,36.866,30.994]},
@@ -1318,7 +1318,8 @@ async function loadOsmHoles(){
   for(const s of servers){ try{ const r=await fetch(s+"?data="+encodeURIComponent(q)); if(r.ok){ data=await r.json(); if(data.elements) break; } }catch(e){} }
   btn.disabled=false;
   if(!data||!data.elements||!data.elements.length){ btn.textContent="Load holes from map data"; alert("No hole lines are mapped for this course yet (or the map server is busy — try again in a minute). You can still place flags by tapping the green."); return; }
-  const out={}; data.elements.forEach(w=>{ const n=parseInt(w.tags&&w.tags.ref); if(n>=1&&n<=18&&w.geometry&&w.geometry.length>=2) out[n]=w.geometry.map(p=>[p.lat,p.lon]); });
+  const [S,W,N,E]=c.bbox; const inside=p=>p.lat>=S&&p.lat<=N&&p.lon>=W&&p.lon<=E;
+  const out={}; data.elements.forEach(w=>{ const n=parseInt(w.tags&&w.tags.ref); if(n>=1&&n<=18&&w.geometry&&w.geometry.length>=2&&w.geometry.every(inside)) out[n]=w.geometry.map(p=>[p.lat,p.lon]); });
   const n=Object.keys(out).length; if(!n){ btn.textContent="Load holes from map data"; alert("Found course data but no numbered holes."); return; }
   state.osmHoles=state.osmHoles||{}; state.osmHoles[state.course]=out; save();
   btn.textContent=`Loaded ${n} holes ✓`; renderHoles(); drawHole();
@@ -1407,7 +1408,8 @@ function drawHole(){
   else if(f&&!mePos){ map.setView([f.lat,f.lng],17); }
   else if(!mapPts.length){ // unmapped hole: start where the previous green is (next tee is usually close)
     const src=(state.osmHoles&&state.osmHoles[state.course])||window.HOLES[state.course]||{}; const prev=src[state.hole-1]||src[18];
-    if(prev){ const g=prev[prev.length-1]; map.setView(g,17); } }
+    const c=courseObj(); const inBox=g=>!c.bbox||(g[0]>=c.bbox[0]&&g[0]<=c.bbox[2]&&g[1]>=c.bbox[1]&&g[1]<=c.bbox[3]);
+    if(prev&&inBox(prev[prev.length-1])){ map.setView(prev[prev.length-1],17); } else if(mapping){ map.setView([c.lat,c.lng],16); } }
   const pts=holeShots().map(s=>[s.lat,s.lng]);
   if(f&&pts.length) pts.push([f.lat,f.lng]);
   if(pts.length>1) L.polyline(pts,{color:"#fff",weight:2,dashArray:"4 6"}).addTo(shotLayer);
@@ -1606,6 +1608,9 @@ document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click",()
   document.getElementById("level").value=state.level;
   document.getElementById("mode").value=state.mode;
   document.getElementById("ldate").value=new Date().toISOString().slice(0,10);
+  // cleanup: remove any loaded/mapped hole lines that lie outside their course's box
+  if(state.osmHoles){ Object.keys(state.osmHoles).forEach(cid=>{ const c=COURSES.find(x=>x.id===cid); if(!c||!c.bbox) return; const hs=state.osmHoles[cid];
+    Object.keys(hs).forEach(n=>{ if(!hs[n].every(g=>g[0]>=c.bbox[0]&&g[0]<=c.bbox[2]&&g[1]>=c.bbox[1]&&g[1]<=c.bbox[3])) delete hs[n]; }); if(!Object.keys(hs).length) delete state.osmHoles[cid]; }); save(); }
   renderBag(); renderLog();
 })();
 </script>
