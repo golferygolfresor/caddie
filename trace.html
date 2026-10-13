@@ -100,12 +100,13 @@ async function runCourse(){
   for(const hno of H){
     const pts=c.pts.filter(a=>a[0]===hno); const tee=pts.find(a=>a[1]===11)||pts.find(a=>a[1]===12); const g=pts.find(a=>a[1]===1&&a[2]===2)||pts.find(a=>a[1]===1);
     if(!tee||!g) continue;
-    const T=[tee[4],tee[5]], Gm=[g[4],g[5]];
+    const T=[tee[4],tee[5]], Gm=[g[4],g[5]]; const gf=pts.find(a=>a[1]===1&&a[2]===1), gb=pts.find(a=>a[1]===1&&a[2]===3);
     const kx=111320*Math.cos(T[0]*Math.PI/180), ky=110540; const toM=ll=>[(ll[1]-T[1])*kx,(ll[0]-T[0])*ky];
     const len=Math.hypot(...toM(Gm)); const z=+(q.get("z")||18); const mpp=156543.03392*Math.cos(T[0]*Math.PI/180)/Math.pow(2,z); const cell=+(q.get("cell")||4);
     const px=Math.min(4096, Math.max(768, Math.round((len+160)/mpp/64)*64));
     const centre=[(T[0]+Gm[0])/2,(T[1]+Gm[1])/2];
-    const r=await traceView({lat:centre[0],lng:centre[1],px,z,cell,gx:Gm,tol:+(q.get("tol")||1.5)});
+    const greenR = (gf&&gb) ? Math.max(12, Math.hypot((gb[5]-gf[5])*kx,(gb[4]-gf[4])*ky)/2+5) : 22;
+    const r=await traceView({lat:centre[0],lng:centre[1],px,z,cell,gx:Gm,greenR,tol:+(q.get("tol")||1.5)});
     if(q.get("dump")){ window.DUMPS=window.DUMPS||{}; window.DUMPS[hno]=C.toDataURL("image/jpeg",0.85); }
     if(!r.ok){ result.holes[hno]={err:r.error}; continue; }
     const corridor=70; const seg=[ [0,0], toM(Gm) ];

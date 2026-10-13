@@ -1555,11 +1555,15 @@ function renderHoleView(){
   let s=`<rect width="${W}" height="${H}" fill="${S.bg}"/>`;
   if(S.sat){
     // satellite tiles (Esri World Imagery, z=18) placed with an affine transform into the rotated hole frame
-    const z=18, n=256*Math.pow(2,z);
+    // zoom adapts to the screen: enough tile pixels per metre for the device, max z19, max 80 tiles
+    const dpr=Math.min(2,window.devicePixelRatio||1); let z=17; while(z<19 && 256*Math.pow(2,z)/(40075016*Math.cos(lat0*Math.PI/180)) < sc*dpr*0.75) z++;
+    const n=256*Math.pow(2,z);
     const frameToLL=(fx,fy)=>{ const x=fx*cs+fy*sn, y=-fx*sn+fy*cs; return [lat0+y/ky, lng0+x/kx]; };
     const llToTilePx=(la,lo)=>[(lo+180)/360*n, (1-Math.log(Math.tan(la*Math.PI/180)+1/Math.cos(la*Math.PI/180))/Math.PI)/2*n];
     const tilePxToFrame=(tx,ty)=>{ const lo=tx/n*360-180; const t=Math.PI*(1-2*ty/n); const la=180/Math.PI*Math.atan(0.5*(Math.exp(t)-Math.exp(-t))); const [x,y]=toXY(la,lo); return [x*cs - y*sn, x*sn + y*cs]; };
-    const corners=[[minX,minY],[maxX,minY],[minX,maxY],[maxX,maxY]].map(([fx,fy])=>llToTilePx(...frameToLL(fx,fy)));
+    // the visible frame is wider/taller than the content bounds when the viewBox letterboxes: cover all of it
+    const vx0=minX-ox/sc, vx1=maxX+ox/sc, vy0=minY-oy/sc, vy1=maxY+oy/sc;
+    const corners=[[vx0,vy0],[vx1,vy0],[vx0,vy1],[vx1,vy1]].map(([fx,fy])=>llToTilePx(...frameToLL(fx,fy)));
     const tx0=Math.floor(Math.min(...corners.map(c=>c[0]))/256), tx1=Math.floor(Math.max(...corners.map(c=>c[0]))/256);
     const ty0=Math.floor(Math.min(...corners.map(c=>c[1]))/256), ty1=Math.floor(Math.max(...corners.map(c=>c[1]))/256);
     s+=`<clipPath id="hvclip"><rect width="${W}" height="${H}"/></clipPath><g clip-path="url(#hvclip)" style="filter:brightness(1.1) saturate(1.15) contrast(1.05)">`;
