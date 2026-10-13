@@ -17,7 +17,7 @@ jobs:
       - name: OSM golf holes for Belek (reference data)
         run: |
           mkdir -p preview/out
-          curl -sS --max-time 120 -G https://overpass-api.de/api/interpreter --data-urlencode 'data=[out:json][timeout:90];(way["golf"="hole"](36.80,30.95,36.90,31.12);way["golf"="green"](36.80,30.95,36.90,31.12););out tags geom;' -o preview/out/osm-belek.json || true
+          curl -sS --max-time 120 -A caddie-tracer -X POST https://overpass-api.de/api/interpreter --data-urlencode 'data=[out:json][timeout:90];(way["golf"="hole"](36.80,30.95,36.90,31.12);way["golf"="green"](36.80,30.95,36.90,31.12););out tags geom;' -o preview/out/osm-belek.json || true
           ls -la preview/out
       - run: mkdir -p preview/out && (python3 -m http.server 8765 >/dev/null 2>&1 &) && sleep 1 && node preview/trace.js 2>&1 | tee preview/out/trace.log
       - name: publish to the traced branch
