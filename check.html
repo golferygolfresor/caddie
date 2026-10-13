@@ -1,0 +1,14 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Caddie imagery check</title></head><body><pre id="o">checking…</pre>
+<script>
+const KEY="AIzaSyDyJMWF0R2YOwPfL-gvPbCurmJtM3lRYhY"; const o=document.getElementById("o"); const log=t=>{o.textContent+="\n"+t;};
+(async()=>{
+  log("page: "+location.href);
+  try{
+    const r=await fetch(`https://tile.googleapis.com/v1/createSession?key=${KEY}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mapType:"satellite",language:"en-US",region:"TR"})});
+    log("createSession: HTTP "+r.status); if(!r.ok){ log((await r.text()).slice(0,300)); log("RESULT: GOOGLE_SESSION_FAILED"); return; }
+    const s=(await r.json()).session;
+    const im=new Image(); im.onload=()=>log("tile: loaded "+im.naturalWidth+"px\nRESULT: GOOGLE_OK"); im.onerror=()=>log("tile: error\nRESULT: GOOGLE_TILE_FAILED");
+    im.src=`https://tile.googleapis.com/v1/2dtiles/18/153558/103043?session=${s}&key=${KEY}`;
+  }catch(e){ log("error "+e); log("RESULT: GOOGLE_SESSION_FAILED"); }
+})();
+</script></body></html>
