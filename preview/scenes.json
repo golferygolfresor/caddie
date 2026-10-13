@@ -1,6 +1,44 @@
 [
-  {"name":"sultan9-hybrid","state":{"course":"api:0121242800342292","hole":9,"view":"hybrid"},"at":0.45},
-  {"name":"sultan1-hybrid","state":{"course":"api:0121242800342292","hole":1,"view":"hybrid"},"at":0.5},
-  {"name":"montg2-hybrid","state":{"course":"api:0121439894853450209","hole":2,"view":"hybrid"},"at":0.0},
-  {"name":"carya13-hybrid","state":{"course":"api:0121233434539341","hole":13,"view":"hybrid"},"at":0.3}
+ {
+  "name": "sultan9-esri",
+  "state": {
+   "course": "api:0121242800342292",
+   "hole": 9,
+   "view": "hybrid",
+   "imagery": "esri"
+  },
+  "at": 0.45
+ },
+ {
+  "name": "sultan9-google",
+  "state": {
+   "course": "api:0121242800342292",
+   "hole": 9,
+   "view": "hybrid",
+   "imagery": "google"
+  },
+  "at": 0.45,
+  "wait": 9000
+ },
+ {
+  "name": "carya13-esri",
+  "state": {
+   "course": "api:0121233434539341",
+   "hole": 13,
+   "view": "hybrid",
+   "imagery": "esri"
+  },
+  "at": 0.3
+ },
+ {
+  "name": "carya13-google",
+  "state": {
+   "course": "api:0121233434539341",
+   "hole": 13,
+   "view": "hybrid",
+   "imagery": "google"
+  },
+  "at": 0.3,
+  "wait": 9000
+ }
 ]

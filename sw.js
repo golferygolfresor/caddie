@@ -1,5 +1,5 @@
 // Caddie service worker: app shell works offline; map tiles are cached as you see them.
-const SHELL = "caddie-shell-v11";
+const SHELL = "caddie-shell-v12";
 const TILES = "caddie-tiles-v1";
 const SHELL_FILES = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png", "./holes.js", "./courses.js", "./shapes.js", "./leaflet.js"];;
 
@@ -11,7 +11,7 @@ self.addEventListener("activate", e => {
 });
 self.addEventListener("fetch", e => {
   const url = e.request.url;
-  const isTile = url.includes("arcgisonline.com") || url.includes("tile.openstreetmap.org");
+  const isTile = url.includes("arcgisonline.com") || url.includes("tile.openstreetmap.org") || url.includes("tile.googleapis.com/v1/2dtiles");
   if (isTile) {
     // cache-first for tiles, capped at ~1500 entries
     e.respondWith(caches.open(TILES).then(async c => {
