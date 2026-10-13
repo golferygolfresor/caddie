@@ -869,6 +869,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
       <div class="stat"><div class="num" id="dClub">–</div><span>club for that</span></div>
       <div class="stat"><div class="num" id="dLast">–</div><span>m, last shot</span></div>
     </div>
+    <p class="note" id="hazLine" style="margin:-6px 0 10px"></p>
     <div class="gpsbar">
       <button class="primary" id="locBtn">Start GPS</button>
       <button class="ghost" id="flagBtn">Place flag by tap</button>
@@ -902,6 +903,19 @@ svg.leaflet-image-layer.leaflet-interactive path {
     <div id="learned"></div>
     <div class="row" style="margin-top:10px"><button class="ghost" id="applyLearned">Use these in My bag</button></div>
   </div>
+  <div class="panel" id="apiPanel">
+    <h3 style="margin:0 0 6px;font-size:18px">Course data from golfapi.io</h3>
+    <p class="note" style="margin:0 0 10px">Green front/middle/back, bunkers, water, doglegs and scorecards for 40,000 courses. Your API key stays on this device. Searching costs 0.1 call; each course costs 1 call for coordinates and 1 for the scorecard.</p>
+    <div class="row">
+      <div class="field" style="flex:2 1 220px"><label for="apiKey">API key</label><input id="apiKey" type="password" autocomplete="off" placeholder="paste key from golfapi.io dashboard"></div>
+      <div class="field"><label for="apiCity">Search city</label><input id="apiCity" value="belek"></div>
+      <div class="field"><label for="apiCountry">Country</label><input id="apiCountry" value="turkey"></div>
+    </div>
+    <div class="gpsbar"><button class="primary" id="apiSearch">Search courses (0.1 call)</button><button class="ghost" id="apiExport">Download all imported data</button></div>
+    <p class="note" id="apiStatus"></p>
+    <div id="apiList"></div>
+  </div>
+
 </section>
 
 <!-- ============ SHOT ============ -->
@@ -1085,7 +1099,7 @@ const CLUBS = [
 const LEVEL_SPREAD = {new:0.20, mid:0.12, steady:0.07};
 
 const state = { seven:120, level:"new", mode:"carry", overrides:{}, log:[],
-  course:"carya", hole:1, flags:{}, shots:[], osmHoles:{}, round:{course:null, date:null} };
+  course:"carya", hole:1, flags:{}, shots:[], osmHoles:{}, api:{}, round:{course:null, date:null} };
 
 /* ---------- storage (persists in artifact storage when available) ---------- */
 async function load(){
@@ -1298,12 +1312,80 @@ const TILES = {
 let tileLayer;
 function haversine(a,b){ const R=6371000,toR=x=>x*Math.PI/180; const dLat=toR(b.lat-a.lat),dLng=toR(b.lng-a.lng);
   const s=Math.sin(dLat/2)**2+Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLng/2)**2; return 2*R*Math.asin(Math.sqrt(s)); }
-function courseObj(){ return COURSES.find(c=>c.id===state.course)||COURSES[0]; }
+function courseObj(){ if(state.course.startsWith("api:")){ const r=state.api[state.course.slice(4)]; if(r) return {id:state.course,name:r.name,lat:+r.lat||36.86,lng:+r.lng||31.05,bbox:null,api:r}; } return COURSES.find(c=>c.id===state.course)||COURSES[0]; }
 function flagKey(){ return state.course+":"+state.hole; }
 
+
+/* ---------- golfapi.io importer (runs in the browser; key stays in this device's storage) ---------- */
+const API="https://golfapi.io/api/v2.3";
+function apiKey(){ return (document.getElementById("apiKey").value||localStorage.getItem("caddie-apikey")||"").trim(); }
+async function apiGet(path){
+  const k=apiKey(); if(!k) throw new Error("Paste your golfapi.io API key first.");
+  localStorage.setItem("caddie-apikey",k);
+  const r=await fetch(API+path,{headers:{Authorization:"Bearer "+k}});
+  if(!r.ok){ throw new Error(`golfapi.io answered ${r.status}${r.status===401?" — key not accepted":r.status===402?" — no calls left":""}`); }
+  return r.json();
+}
+function apiCourses(){ return Object.values(state.api||{}); }
+function apiStatus(t){ document.getElementById("apiStatus").textContent=t; }
+async function apiSearch(){
+  const city=document.getElementById("apiCity").value.trim(), country=document.getElementById("apiCountry").value.trim();
+  try{ apiStatus("Searching…");
+    const d=await apiGet(`/courses?city=${encodeURIComponent(city)}&country=${encodeURIComponent(country)}&measureUnit=km`);
+    apiStatus(`${(d.courses||[]).length} courses found · ${d.apiRequestsLeft} calls left`);
+    renderApiList(d.courses||[]);
+  }catch(e){ apiStatus(e.message); }
+}
+function renderApiList(list){
+  const box=document.getElementById("apiList");
+  if(!list.length){ box.innerHTML=`<p class="empty">Nothing found. Try the city "serik" or "antalya".</p>`; return; }
+  box.innerHTML=`<table><thead><tr><th>Course</th><th>Club</th><th class="r">Holes</th><th>GPS</th><th></th></tr></thead><tbody>`+
+    list.map(c=>{ const have=state.api&&state.api[c.courseID]; return `<tr><td>${c.courseName}</td><td><small>${c.clubName}<br>${c.city||""}</small></td><td class="r">${c.numHoles}</td><td>${c.hasGPS?"✓":"–"}</td>
+      <td>${have?`<small>imported ${have.coords?have.coords.length+" pts":""}${have.card?", card":""}</small>`:""}<br><button class="ghost" style="padding:4px 8px;font-size:13px" data-cid="${c.courseID}" data-name="${c.courseName}" data-club="${c.clubName}" data-gps="${c.hasGPS?1:0}">${have?"Re-fetch":"Fetch (2 calls)"}</button></td></tr>`; }).join("")+`</tbody></table>`;
+  box.querySelectorAll("button[data-cid]").forEach(b=>b.addEventListener("click",()=>fetchCourse(b.dataset)));
+}
+async function fetchCourse(d){
+  const cid=d.cid; if(!confirm(`Fetch "${d.name}" (${d.club})? This uses ${d.gps==="1"?2:1} of your API calls.`)) return;
+  try{
+    apiStatus(`Fetching ${d.name}…`);
+    state.api=state.api||{}; const rec=state.api[cid]||{courseID:cid,name:d.name,club:d.club};
+    const card=await apiGet(`/courses/${cid}?measureUnit=m`); rec.card=card; rec.lat=card.latitude; rec.lng=card.longitude;
+    let left=card.apiRequestsLeft;
+    if(d.gps==="1"){ const co=await apiGet(`/coordinates/${cid}`); rec.coords=(co.coordinates||[]).map(p=>({poi:+p.poi,loc:+p.location,side:+p.sideFW,hole:+p.hole,lat:+p.latitude,lng:+p.longitude})); left=co.apiRequestsLeft; }
+    state.api[cid]=rec; save();
+    apiStatus(`${d.name}: ${rec.coords?rec.coords.length+" coordinates, ":""}scorecard with ${card.numTees} tees · ${left} calls left`);
+    refreshCourseList(); renderApiList(lastApiList=lastApiList.map(c=>c));
+  }catch(e){ apiStatus(e.message); }
+}
+let lastApiList=[];
+document.getElementById("apiSearch").addEventListener("click",async()=>{ await apiSearch(); });
+document.getElementById("apiExport").addEventListener("click",()=>{
+  const blob=new Blob([JSON.stringify(state.api||{})],{type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="caddie-courses.json"; a.click();
+});
+/* API-imported courses become selectable courses with id "api:<courseID>" */
+function refreshCourseList(){
+  const sel=document.getElementById("course"); if(!sel) return;
+  const extra=apiCourses().map(r=>({id:"api:"+r.courseID,name:"★ "+r.name+(r.club&&!r.name.includes(r.club.split(" ")[0])?" — "+r.club:""),lat:+r.lat||36.86,lng:+r.lng||31.05,bbox:null,api:r}));
+  const all=[...extra,...COURSES];
+  sel.innerHTML=all.map(c=>`<option value="${c.id}">${c.name}</option>`).join(""); sel.value=state.course;
+  const sun=document.getElementById("sunCourse"); if(sun&&sun.options.length){ sun.innerHTML=sel.innerHTML; }
+}
+function syncTeeSel(){
+  const ts=document.getElementById("teeSel"); const r=apiRec();
+  if(r&&r.card&&r.card.tees&&r.card.tees.length){ const cur=ts.value; ts.innerHTML=r.card.tees.map((t,i)=>`<option value="${i}">${t.teeName} tees</option>`).join(""); ts.value=cur<r.card.tees.length?cur:0; ts.closest(".field").style.display=""; }
+  else if(window.COURSE_META[state.course]){ ts.innerHTML=`<option value="1">Yellow tees</option><option value="0">Black tees</option><option value="2">White tees</option><option value="3">Red tees</option>`; ts.closest(".field").style.display=""; }
+  else ts.closest(".field").style.display="none";
+}
+function apiRec(){ return state.course.startsWith("api:") ? state.api[state.course.slice(4)] : null; }
+function apiHolePts(){ const r=apiRec(); return r&&r.coords ? r.coords.filter(p=>p.hole===state.hole) : []; }
+
 /* ---------- hole centrelines: bundled (holes.js) + loaded from OpenStreetMap (saved in state) ---------- */
-function holeLine(){ const src=(state.osmHoles&&state.osmHoles[state.course])||window.HOLES[state.course]; return src&&src[state.hole]; }
-function courseHasHoles(){ return !!((state.osmHoles&&state.osmHoles[state.course])||window.HOLES[state.course]); }
+function holeLine(){
+  const pts=apiHolePts();
+  if(pts.length){ const tee=pts.find(p=>p.poi===11)||pts.find(p=>p.poi===12); const g=pts.find(p=>p.poi===1&&p.loc===2)||pts.find(p=>p.poi===1);
+    if(tee&&g){ const dl=pts.filter(p=>p.poi===9).map(p=>[p.lat,p.lng]); return [[tee.lat,tee.lng],...dl,[g.lat,g.lng]]; } }
+  const src=(state.osmHoles&&state.osmHoles[state.course])||window.HOLES[state.course]; return src&&src[state.hole]; }
+function courseHasHoles(){ return !!(apiRec()&&apiRec().coords) || !!((state.osmHoles&&state.osmHoles[state.course])||window.HOLES[state.course]); }
 function autoFlag(){ // if no flag placed by hand, use the mapped green
   if(state.flags[flagKey()]) return state.flags[flagKey()];
   const ln=holeLine(); if(!ln) return null; const g=ln[ln.length-1]; return {lat:g[0],lng:g[1],auto:true};
@@ -1328,9 +1410,13 @@ document.getElementById("osmBtn").addEventListener("click",loadOsmHoles);
 
 /* ---------- "Map this course": tap tee, (dogleg), green for each hole ---------- */
 let mapping=false, mapPts=[];
-function metaFor(){ const m=window.COURSE_META[state.course]; return m&&m.holes[state.hole]; }
+function metaFor(){
+  const r=apiRec(); if(r&&r.card){ const c=r.card, i=state.hole-1; const tees=(c.tees||[]); const t=Math.min(parseInt(document.getElementById("teeSel").value||0),tees.length-1);
+    const par=(c.parsMen||[])[i], si=(c.indexesMen||[])[i]; if(par) return {par, si, name: tees[t]?`${tees[t].teeName} tees`:"", d: tees.map(x=>x["length"+(i+1)]), tip:null, api:true}; }
+  const m=window.COURSE_META[state.course]; return m&&m.holes[state.hole]; }
 function holeHeader(){
   const m=metaFor(); if(!m) return `Hole ${state.hole}`;
+  if(m.api){ const t=Math.min(parseInt(document.getElementById("teeSel").value||0),m.d.length-1); return `Hole ${state.hole} · Par ${m.par}${m.si?" · SI "+m.si:""} · ${m.d[t]||"–"} m from the ${m.name.toLowerCase()}`; }
   const t=parseInt(document.getElementById("teeSel").value||1); return `Hole ${state.hole} · Par ${m.par} · ${m.name} · ${m.d[t]} m from the ${window.COURSE_META[state.course].tees[t].toLowerCase()} tees`;
 }
 function setMapping(on){
@@ -1370,14 +1456,15 @@ document.getElementById("mapExport").addEventListener("click",()=>{
 document.getElementById("teeSel").addEventListener("change",drawHole);
 function initMap(){
   if(map) return;
-  document.getElementById("teeSel").closest(".field").style.display = window.COURSE_META[state.course]?"":"none";
+  syncTeeSel();
   const c=courseObj();
   map=L.map("map",{zoomControl:true}).setView([c.lat,c.lng],16);
   tileLayer=TILES.sat().addTo(map);
   shotLayer=L.layerGroup().addTo(map);
   map.on("click",e=>{ if(mapping){ mapTap(e.latlng); return; } if(placing){ setFlag(e.latlng); placing=false; document.getElementById("flagBtn").textContent="Place flag by tap"; }});
-  const sel=document.getElementById("course"); sel.innerHTML=COURSES.map(c=>`<option value="${c.id}">${c.name}</option>`).join(""); sel.value=state.course;
-  sel.addEventListener("change",e=>{ state.course=e.target.value; state.hole=1; if(mapping) setMapping(false); document.getElementById("teeSel").closest(".field").style.display = window.COURSE_META[state.course]?"":"none"; const k=courseObj(); map.setView([k.lat,k.lng],16); save(); renderHoles(); drawHole(); });
+  const sel=document.getElementById("course"); refreshCourseList();
+  document.getElementById("apiKey").value=localStorage.getItem("caddie-apikey")||"";
+  sel.addEventListener("change",e=>{ state.course=e.target.value; state.hole=1; if(mapping) setMapping(false); syncTeeSel(); const k=courseObj(); map.setView([k.lat,k.lng],16); save(); renderHoles(); drawHole(); });
   document.getElementById("unitSel").addEventListener("change",e=>{ map.removeLayer(tileLayer); tileLayer=TILES[e.target.value]().addTo(map); });
   const sc=document.getElementById("shotClub"); sc.innerHTML=CLUBS.map(c=>`<option value="${c.k}">${c.name}</option>`).join(""); sc.value="7i";
   renderHoles(); drawHole(); renderRound(); renderLearned();
@@ -1402,6 +1489,12 @@ function drawHole(){
     L.polyline(ln,{color:"#22503C",weight:1.5,opacity:.9,dashArray:"6 6"}).addTo(shotLayer);
     L.circleMarker(ln[0],{radius:6,color:"#fff",weight:2,fillColor:"#22503C",fillOpacity:1}).bindTooltip("Tee "+state.hole).addTo(shotLayer);
   }
+  // golfapi.io hazard layer
+  apiHolePts().forEach(p=>{
+    const sty={1:{c:"#8FD14F",r:5},2:{c:"#E8D8A8",r:5},3:{c:"#E8D8A8",r:5},4:{c:"#4FA3E8",r:5},5:{c:"#2F6B3A",r:4},9:{c:"#fff",r:4},11:{c:"#22503C",r:5},12:{c:"#1B241E",r:5},6:{c:"#aaa",r:3},7:{c:"#aaa",r:3},8:{c:"#aaa",r:3},10:{c:"#aaa",r:3}}[p.poi];
+    if(!sty) return; const lbl={1:["green front","green middle","green back"][p.loc-1]||"green",2:"greenside bunker",3:"fairway bunker",4:"water",5:"trees",9:"dogleg",11:"front tee",12:"back tee",6:"100 m marker",7:"150 m marker",8:"200 m marker",10:"road"}[p.poi];
+    L.circleMarker([p.lat,p.lng],{radius:sty.r,color:"#1B241E",weight:1,fillColor:sty.c,fillOpacity:.95}).bindTooltip(lbl+(mePos?` · ${Math.round(haversine(mePos,p))} m`:"")).addTo(shotLayer);
+  });
   if(f){ flagMarker=L.marker([f.lat,f.lng],{draggable:true,icon:L.divIcon({className:"",html:'<div class="flag-pin">⛳</div>',iconSize:[22,22],iconAnchor:[6,22]})}).addTo(map);
     flagMarker.on("dragend",e=>setFlag(e.target.getLatLng())); }
   if(ln){ map.fitBounds(L.latLngBounds(ln),{padding:[30,30],maxZoom:18}); }
@@ -1435,6 +1528,15 @@ function updateLive(){
     dC.textContent = pick?pick.k: d<carryOf(CLUBS[CLUBS.length-1])*fac? "pitch" : "lay up"; }
   else { dF.textContent="–"; dC.textContent="–"; }
   if(hs.length&&mePos){ dL.textContent=Math.round(haversine(hs[hs.length-1],mePos)); } else dL.textContent="–";
+  // Garmin-style numbers from golfapi.io points
+  const hz=document.getElementById("hazLine"); const pts=apiHolePts();
+  if(pts.length&&mePos){
+    const gF=pts.find(p=>p.poi===1&&p.loc===1), gB=pts.find(p=>p.poi===1&&p.loc===3);
+    const parts=[]; if(gF&&gB) parts.push(`Green front ${Math.round(haversine(mePos,gF))} · back ${Math.round(haversine(mePos,gB))} m`);
+    const ahead=pts.filter(p=>[2,3,4].includes(p.poi)).map(p=>({p,d:haversine(mePos,p)})).filter(x=>x.d>15&&x.d<320).sort((a,b)=>a.d-b.d).slice(0,3);
+    ahead.forEach(x=>parts.push(`${{2:"bunker",3:"bunker",4:"water"}[x.p.poi]} ${["left","centre","right"][x.p.side-1]||""} ${Math.round(x.d)} m`));
+    hz.textContent=parts.join(" · ");
+  } else hz.textContent="";
 }
 function onFix(p){
   mePos={lat:p.coords.latitude,lng:p.coords.longitude}; lastFix=Date.now();
@@ -1497,7 +1599,7 @@ function renderRound(){
   box.innerHTML=`<table><thead><tr><th>Hole</th><th class="r">Shots</th><th class="r">Putts</th><th class="r">Score</th><th>Measured</th></tr></thead><tbody>`+
     Object.keys(holes).sort((a,b)=>a-b).map(h=>{ const o=holes[h]; const sc=o.done?o.strokes+o.putts:null; if(sc) total+=sc;
       const m=ms.filter(s=>s.hole==+h).map(s=>`${s.club} ${s.dist}m`).join(", ");
-      const pm=window.COURSE_META[state.course]&&window.COURSE_META[state.course].holes[h]; return `<tr><td>${h}${pm?` <small style="color:#5C6B60">par ${pm.par}</small>`:""}</td><td class="r">${o.strokes}</td><td class="r">${o.done?o.putts:"–"}</td><td class="r">${sc??"…"}</td><td><small>${m}</small></td></tr>`; }).join("")+
+      const ar=apiRec(); const pm=(ar&&ar.card&&ar.card.parsMen&&ar.card.parsMen[h-1])?{par:ar.card.parsMen[h-1]}:(window.COURSE_META[state.course]&&window.COURSE_META[state.course].holes[h]); return `<tr><td>${h}${pm?` <small style="color:#5C6B60">par ${pm.par}</small>`:""}</td><td class="r">${o.strokes}</td><td class="r">${o.done?o.putts:"–"}</td><td class="r">${sc??"…"}</td><td><small>${m}</small></td></tr>`; }).join("")+
     `</tbody></table><p class="note">Total so far: <strong>${total}</strong> on ${Object.values(holes).filter(o=>o.done).length} holes.</p>`;
 }
 function learnedStats(){
