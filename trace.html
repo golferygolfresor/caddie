@@ -44,10 +44,21 @@ Promise.all(loads).then(ok=>{
     else if(h>=50&&h<=170&&(v<=T.fv||tex>=T.ft)) k=4;                           // trees / rough: green but dark or textured
     cls[gy*G+gxi]=k;
   }
+  // neighbourhood texture over 5x5 cells (~10 m): separates water (flat) from canopy (rough), fairway (smooth) from scrub
+  const T2=new Float32Array(G*G);
+  for(let y=2;y<G-2;y++) for(let x=2;x<G-2;x++){ let m=0,c=0; for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ m+=V[(y+dy)*G+x+dx]; c++; } m/=c; let v2=0; for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ v2+=(V[(y+dy)*G+x+dx]-m)**2; } T2[y*G+x]=Math.sqrt(v2/c); }
+  const P={fh1:+(q.get('fh1')||70), fh2:+(q.get('fh2')||118), fv:+(q.get('fv2')||0.47), ft2:+(q.get('ft2')||0.045), wv:+(q.get('wv')||0.26), wt:+(q.get('wt')||0.025), sv:+(q.get('sv')||0.55), ss:+(q.get('ss')||0.30)};
+  for(let i=0;i<G*G;i++){ const h=F[i*4], s=F[i*4+1], v=F[i*4+2], t2=T2[i]; let k=0;
+    if(v>P.sv&&s<P.ss) k=2;                                                   // sand: pale
+    else if(h>=120&&h<=260&&v<P.wv&&t2<P.wt&&s>0.2) k=3;                       // water: dark teal, flat
+    else if(h>=P.fh1&&h<=P.fh2&&v>=P.fv&&s>=0.15&&s<=0.50&&t2<P.ft2) k=1;      // fairway/green: bright yellow-green, smooth
+    else if(h>=50&&h<=175&&(v<0.30||t2>=P.ft2)) k=4;                           // trees / scrub: dark or textured green
+    else if(h>=50&&h<=175) k=5;                                               // rough: other green
+    cls[i]=k; }
   // majority smoothing (3x3) ×2
-  for(let pass=0;pass<2;pass++){ const nc=new Uint8Array(cls); for(let y=1;y<G-1;y++) for(let x=1;x<G-1;x++){ const cnt=[0,0,0,0,0]; for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++) cnt[cls[(y+dy)*G+x+dx]]++; let best=0; for(let k=1;k<5;k++) if(cnt[k]>cnt[best]) best=k; nc[y*G+x]=best; } cls.set(nc); }
+  for(let pass=0;pass<2;pass++){ const nc=new Uint8Array(cls); for(let y=1;y<G-1;y++) for(let x=1;x<G-1;x++){ const cnt=[0,0,0,0,0,0]; for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++) cnt[cls[(y+dy)*G+x+dx]]++; let best=0; for(let k=1;k<6;k++) if(cnt[k]>cnt[best]) best=k; nc[y*G+x]=best; } cls.set(nc); }
   // count
-  for(let i=0;i<G*G;i++) stats[["other","fairway","sand","water","trees"][cls[i]]]++;
+  stats.rough=0; for(let i=0;i<G*G;i++) stats[["other","fairway","sand","water","trees","rough"][cls[i]]]++;
   const cellM=cell*mPerPx; stats.cellMetres=+cellM.toFixed(2); stats.metresPerPixel=+mPerPx.toFixed(3);
   // connected components → polygons via boundary tracing on a mask
   function components(k){ const seen=new Uint8Array(G*G); const comps=[]; for(let i=0;i<G*G;i++){ if(cls[i]!==k||seen[i]) continue; const stack=[i], cellsIn=[]; seen[i]=1; while(stack.length){ const j=stack.pop(); cellsIn.push(j); const y=Math.floor(j/G), x=j%G; [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dy])=>{ const nx=x+dx, ny=y+dy; if(nx<0||ny<0||nx>=G||ny>=G) return; const jj=ny*G+nx; if(cls[jj]===k&&!seen[jj]){ seen[jj]=1; stack.push(jj); } }); } comps.push(cellsIn); } return comps; }
@@ -80,8 +91,9 @@ Promise.all(loads).then(ok=>{
     if(cellsIn.length>=4) polys.green=[simplify(outline(cellsIn),1.0).map(toLatLng)]; stats.greenCells=cellsIn.length; }
   const probe=(q.get("pts")||"").split(";").filter(Boolean).map(s=>s.split(",").map(Number));
   stats.probe=probe.map(([la,lo])=>{ const [X,Y]=toPx(la,lo); const cxg=Math.floor((X-x0)/cell), cyg=Math.floor((Y-y0)/cell); if(cxg<1||cyg<1||cxg>=G-1||cyg>=G-1) return null;
-    let h=0,s=0,v=0,t=0,c=0; const cnt=[0,0,0,0,0]; for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){ const j=(cyg+dy)*G+cxg+dx; h+=F[j*4];s+=F[j*4+1];v+=F[j*4+2];t+=F[j*4+3];c++; cnt[cls[j]]++; }
-    return {h:Math.round(h/c),s:+(s/c).toFixed(2),v:+(v/c).toFixed(2),tex:+(t/c).toFixed(3),cls:cnt}; });
+    let h=0,s=0,v=0,t=0,c=0,t2=0; const cnt=[0,0,0,0,0,0]; let mv=0,ms=1; for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){ const j=(cyg+dy)*G+cxg+dx; h+=F[j*4];s+=F[j*4+1];v+=F[j*4+2];t+=F[j*4+3];t2+=T2[j];c++; cnt[cls[j]]++; }
+    for(let dy=-3;dy<=3;dy++) for(let dx=-3;dx<=3;dx++){ const j=(cyg+dy)*G+cxg+dx; if(F[j*4+2]>mv){mv=F[j*4+2]; ms=F[j*4+1];} }
+    return {h:Math.round(h/c),s:+(s/c).toFixed(2),v:+(v/c).toFixed(2),t2:+(t2/c).toFixed(3),max7:[+mv.toFixed(2),+ms.toFixed(2)],cls:cnt}; });
   stats.polys={fairway:polys.fairway.length,bunker:polys.bunker.length,water:polys.water.length,trees:polys.trees.length};
   out.textContent=JSON.stringify(q.get("only")==="stats"?{ok:true,stats}:{ok:true,x0,y0,z,px,cell,stats,polys});
   if(q.get("dbg")){ const col={1:"rgba(120,220,100,.5)",2:"rgba(255,240,180,.7)",3:"rgba(60,140,255,.6)",4:"rgba(0,60,0,.5)"}; for(let i=0;i<G*G;i++){ if(!cls[i]) continue; ctx.fillStyle=col[cls[i]]; ctx.fillRect((i%G)*cell,Math.floor(i/G)*cell,cell,cell); } }
