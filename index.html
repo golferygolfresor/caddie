@@ -793,6 +793,11 @@ svg.leaflet-image-layer.leaflet-interactive path {
     .holes button{flex:0 0 40px;height:40px;font-size:16px}
     #map{height:46vh;min-height:300px}
   }
+  .holeview{position:relative;height:46vh;min-height:300px;max-height:560px;border-radius:10px;overflow:hidden;background:#2E5B3C;margin-bottom:12px;border:1px solid var(--line)}
+  .holeview svg{width:100%;height:100%;display:block}
+  .hv-empty[hidden]{display:none}
+  .hv-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:30px;color:#fff;font-size:15px;background:rgba(23,58,43,.85)}
+  @media (min-width:641px){.holeview{height:60vh}}
 </style>
 </head>
 <body>
@@ -853,11 +858,12 @@ svg.leaflet-image-layer.leaflet-interactive path {
         <select id="course"></select>
       </div>
       <div class="field">
-        <label for="unitSel">Satellite</label>
-        <select id="unitSel"><option value="sat">Satellite</option><option value="map">Street map</option></select>
+        <label for="unitSel">View</label>
+        <select id="unitSel"><option value="hole">Hole view</option><option value="sat">Satellite</option><option value="map">Street map</option></select>
       </div>
     </div>
     <div class="holes" id="holes"></div>
+    <div id="holeView" class="holeview"><svg id="holeSvg" viewBox="0 0 360 520" preserveAspectRatio="xMidYMid meet"></svg><div class="hv-empty" id="hvEmpty" hidden>No hole data for this course yet — switch to Satellite and place the flag by tap, or play the hole once.</div></div>
     <div id="map"></div>
     <p class="note" id="holeInfo" style="margin:-4px 0 10px"></p>
     <div id="mapPanel" class="advice" hidden style="margin:0 0 12px">
@@ -1100,7 +1106,7 @@ const CLUBS = [
 const LEVEL_SPREAD = {new:0.20, mid:0.12, steady:0.07};
 
 const state = { seven:120, level:"new", mode:"carry", overrides:{}, log:[],
-  course:"api:0121233434539341", hole:1, flags:{}, shots:[], osmHoles:{}, api:{}, round:{course:null, date:null} };
+  course:"api:0121233434539341", hole:1, flags:{}, shots:[], osmHoles:{}, api:{}, view:"hole", round:{course:null, date:null} };
 
 /* ---------- storage (persists in artifact storage when available) ---------- */
 async function load(){
@@ -1380,6 +1386,7 @@ function syncTeeSel(){
   else ts.closest(".field").style.display="none";
 }
 const TIPS_FOR={"0121242800342292":"agcsultan"};
+const DOGLEGS_FROM={"0121233434539341":"carya"};
 function apiRec(){ return state.course.startsWith("api:") ? apiAll()[state.course.slice(4)] : null; }
 function apiHolePts(){ const r=apiRec(); return r&&r.coords ? r.coords.filter(p=>p.hole===state.hole) : []; }
 
@@ -1387,7 +1394,9 @@ function apiHolePts(){ const r=apiRec(); return r&&r.coords ? r.coords.filter(p=
 function holeLine(){
   const pts=apiHolePts();
   if(pts.length){ const tee=pts.find(p=>p.poi===11)||pts.find(p=>p.poi===12); const g=pts.find(p=>p.poi===1&&p.loc===2)||pts.find(p=>p.poi===1);
-    if(tee&&g){ const dl=pts.filter(p=>p.poi===9).map(p=>[p.lat,p.lng]); return [[tee.lat,tee.lng],...dl,[g.lat,g.lng]]; } }
+    if(tee&&g){ let dl=pts.filter(p=>p.poi===9).map(p=>[p.lat,p.lng]);
+      if(!dl.length){ const legacy=window.HOLES[DOGLEGS_FROM[state.course.slice(4)]]; const l=legacy&&legacy[state.hole]; if(l&&l.length>2) dl=l.slice(1,-1); }
+      return [[tee.lat,tee.lng],...dl,[g.lat,g.lng]]; } }
   const src=(state.osmHoles&&state.osmHoles[state.course])||window.HOLES[state.course]; return src&&src[state.hole]; }
 function courseHasHoles(){ return !!(apiRec()&&apiRec().coords) || !!((state.osmHoles&&state.osmHoles[state.course])||window.HOLES[state.course]); }
 function autoFlag(){ // if no flag placed by hand, use the mapped green
@@ -1470,7 +1479,8 @@ function initMap(){
   const sel=document.getElementById("course"); refreshCourseList();
   document.getElementById("apiKey").value=localStorage.getItem("caddie-apikey")||"";
   sel.addEventListener("change",e=>{ state.course=e.target.value; state.hole=1; if(mapping) setMapping(false); syncTeeSel(); const k=courseObj(); map.setView([k.lat,k.lng],16); save(); renderHoles(); drawHole(); });
-  document.getElementById("unitSel").addEventListener("change",e=>{ map.removeLayer(tileLayer); tileLayer=TILES[e.target.value]().addTo(map); });
+  document.getElementById("unitSel").addEventListener("change",e=>{ state.view=e.target.value; save(); applyView(); });
+  state.view=state.view||"hole"; document.getElementById("unitSel").value=state.view; applyView();
   const sc=document.getElementById("shotClub"); sc.innerHTML=CLUBS.map(c=>`<option value="${c.k}">${c.name}</option>`).join(""); sc.value="7i";
   renderHoles(); drawHole(); renderRound(); renderLearned();
 }
@@ -1484,6 +1494,73 @@ function renderHoles(){
 function setFlag(ll){ state.flags[flagKey()]={lat:ll.lat,lng:ll.lng}; save(); renderHoles(); drawHole(); updateLive(); }
 function holeShots(){ return state.shots.filter(s=>s.course===state.course&&s.hole===state.hole&&s.date===today()); }
 function today(){ return new Date().toISOString().slice(0,10); }
+
+/* ---------- Hole view: Garmin-style illustrated hole from the data points, tee at bottom, green at top ---------- */
+function applyView(){
+  const v=state.view||"hole"; const hv=document.getElementById("holeView"), mp=document.getElementById("map");
+  hv.style.display = v==="hole"?"":"none"; mp.style.display = v==="hole"?"none":"";
+  if(v!=="hole"){ if(tileLayer) map.removeLayer(tileLayer); tileLayer=TILES[v==="map"?"map":"sat"]().addTo(map); setTimeout(()=>map.invalidateSize(),50); }
+  renderHoleView();
+}
+function renderHoleView(){
+  if((state.view||"hole")!=="hole") return;
+  const svg=document.getElementById("holeSvg"), empty=document.getElementById("hvEmpty");
+  const ln=holeLine(); const pts=apiHolePts();
+  if(!ln){ svg.innerHTML=""; empty.hidden=false; return; } empty.hidden=true;
+  // local metric frame: origin = tee, y axis = tee→green (through last dogleg), rotated so the hole points up
+  const tee=ln[0], green=ln[ln.length-1];
+  const lat0=tee[0], lng0=tee[1], kx=111320*Math.cos(lat0*Math.PI/180), ky=110540;
+  const toXY=(la,lo)=>[(lo-lng0)*kx,(la-lat0)*ky];
+  const axisFrom = ln.length>2 ? ln[ln.length-2] : tee; // orient on the final approach so the green is straight up
+  const [ax,ay]=toXY(axisFrom[0],axisFrom[1]); const [gx,gy]=toXY(green[0],green[1]);
+  const ang=Math.atan2(gx-ax,gy-ay); const cs=Math.cos(ang), sn=Math.sin(ang);
+  const rot=(la,lo)=>{ const [x,y]=toXY(la,lo); return [x*cs - y*sn, x*sn + y*cs]; }; // rotate so axis → +y
+  // collect everything in rotated metres
+  const line=ln.map(p=>rot(p[0],p[1])); const feats=pts.map(p=>({...p,xy:rot(p.lat,p.lng)}));
+  let me=null; if(mePos) me=rot(mePos.lat,mePos.lng); const f=autoFlag(); const flag=f?rot(f.lat,f.lng):null;
+  const shots=holeShots().map(s=>rot(s.lat,s.lng));
+  // bounds → viewBox 360×520 with padding; y flipped (up = north along hole)
+  const all=[...line,...feats.map(f=>f.xy),...shots]; if(me) all.push(me);
+  let minX=Math.min(...all.map(a=>a[0]))-40, maxX=Math.max(...all.map(a=>a[0]))+40, minY=Math.min(...all.map(a=>a[1]))-30, maxY=Math.max(...all.map(a=>a[1]))+40;
+  const W=360,H=520; const sc=Math.min(W/(maxX-minX), H/(maxY-minY)); const ox=(W-(maxX-minX)*sc)/2, oy=(H-(maxY-minY)*sc)/2;
+  const X=a=>ox+(a[0]-minX)*sc, Y=a=>H-oy-(a[1]-minY)*sc;
+  const P=a=>`${X(a).toFixed(1)},${Y(a).toFixed(1)}`;
+  let s=`<rect width="${W}" height="${H}" fill="#2E5B3C"/>`;
+  // soft rough texture
+  s+=`<rect width="${W}" height="${H}" fill="url(#g)" opacity=".35"/><defs><radialGradient id="g" cx="50%" cy="40%" r="70%"><stop offset="0" stop-color="#3C7A4F"/><stop offset="1" stop-color="#1F4A2E"/></radialGradient></defs>`;
+  // fairway band along the centreline (no outline data: drawn as a generous corridor), narrows into the green
+  const fw=50*sc; const m=metaFor(); const par=m&&m.par;
+  if(!(par===3)) s+=`<polyline points="${line.map(P).join(" ")}" fill="none" stroke="#7CB46B" stroke-width="${fw}" stroke-linecap="round" stroke-linejoin="round" opacity=".95"/>`;
+  s+=`<polyline points="${line.map(P).join(" ")}" fill="none" stroke="#fff" stroke-width="1.2" stroke-dasharray="4 5" opacity=".7"/>`;
+  // distance arcs from the player (or from the tee) every 50 m
+  const origin=me||line[0]; for(let d=50; d<=300; d+=50){ const r=d*sc; if(r>H*1.3) break;
+    s+=`<circle cx="${X(origin)}" cy="${Y(origin)}" r="${r.toFixed(1)}" fill="none" stroke="#fff" stroke-width=".8" opacity=".25"/><text x="${(X(origin)+4).toFixed(1)}" y="${(Y(origin)-r-3).toFixed(1)}" font-size="9" fill="#fff" opacity=".7">${d}</text>`; }
+  // green: ellipse through front/middle/back when known, else circle
+  const gf=feats.find(p=>p.poi===1&&p.loc===1), gb=feats.find(p=>p.poi===1&&p.loc===3), gm=feats.find(p=>p.poi===1&&p.loc===2)||{xy:line[line.length-1]};
+  const depth = gf&&gb ? Math.hypot(gb.xy[0]-gf.xy[0],gb.xy[1]-gf.xy[1]) : 30; const gang = gf&&gb ? Math.atan2(gb.xy[0]-gf.xy[0], gb.xy[1]-gf.xy[1]) : 0;
+  s+=`<g transform="translate(${X(gm.xy)},${Y(gm.xy)}) rotate(${(gang*180/Math.PI).toFixed(1)})"><ellipse rx="${(depth*0.42*sc).toFixed(1)}" ry="${(depth*0.55*sc).toFixed(1)}" fill="#A8E08A" stroke="#DFF5C8" stroke-width="1.5"/></g>`;
+  if(gf) s+=`<text x="${X(gf.xy)+10}" y="${Y(gf.xy)+4}" font-size="9" fill="#fff" opacity=".8">F</text>`;
+  if(gb) s+=`<text x="${X(gb.xy)+10}" y="${Y(gb.xy)+4}" font-size="9" fill="#fff" opacity=".8">B</text>`;
+  // hazards
+  feats.forEach(p=>{ if(p.poi===2||p.poi===3) s+=`<ellipse cx="${X(p.xy)}" cy="${Y(p.xy)}" rx="${(7*sc+3).toFixed(1)}" ry="${(5*sc+2).toFixed(1)}" fill="#F3E6B8" stroke="#C9B57A"/>`;
+    if(p.poi===4) s+=`<ellipse cx="${X(p.xy)}" cy="${Y(p.xy)}" rx="${(12*sc+4).toFixed(1)}" ry="${(8*sc+3).toFixed(1)}" fill="#4FA3E8" opacity=".9"/>`;
+    if(p.poi===5) s+=`<circle cx="${X(p.xy)}" cy="${Y(p.xy)}" r="${(4*sc+2).toFixed(1)}" fill="#1F4A2E" stroke="#163A24"/>`; });
+  // tees
+  feats.filter(p=>p.poi===11||p.poi===12).forEach(p=>{ s+=`<rect x="${X(p.xy)-7}" y="${Y(p.xy)-4}" width="14" height="8" rx="2" fill="${p.poi===12?"#1B241E":"#F8FAF5"}" stroke="#fff" stroke-width="1"/>`; });
+  if(!feats.length) s+=`<rect x="${X(line[0])-7}" y="${Y(line[0])-4}" width="14" height="8" rx="2" fill="#F8FAF5" stroke="#fff"/>`;
+  // shots and flag
+  if(shots.length){ const path=[...shots, ...(flag?[flag]:[])]; s+=`<polyline points="${path.map(P).join(" ")}" fill="none" stroke="#fff" stroke-width="1.5" stroke-dasharray="3 4"/>`; shots.forEach(a=>s+=`<circle cx="${X(a)}" cy="${Y(a)}" r="3.5" fill="#fff" stroke="#1B241E"/>`); }
+  if(flag){ s+=`<line x1="${X(flag)}" y1="${Y(flag)}" x2="${X(flag)}" y2="${Y(flag)-16}" stroke="#1B241E" stroke-width="1.5"/><polygon points="${X(flag)},${Y(flag)-16} ${X(flag)+9},${Y(flag)-12} ${X(flag)},${Y(flag)-8}" fill="#B9391F"/>`; }
+  // me + line to flag with distance
+  if(me){ if(flag){ s+=`<line x1="${X(me)}" y1="${Y(me)}" x2="${X(flag)}" y2="${Y(flag)}" stroke="#fff" stroke-width="1.5" opacity=".8"/>`;
+      const mid=[(me[0]+flag[0])/2,(me[1]+flag[1])/2]; const d=Math.round(Math.hypot(flag[0]-me[0],flag[1]-me[1]));
+      s+=`<rect x="${X(mid)-20}" y="${Y(mid)-10}" width="40" height="18" rx="9" fill="#1B241E" opacity=".85"/><text x="${X(mid)}" y="${Y(mid)+4}" font-size="11" fill="#fff" text-anchor="middle" font-weight="600">${d} m</text>`; }
+    s+=`<circle cx="${X(me)}" cy="${Y(me)}" r="7" fill="#1E73E8" stroke="#fff" stroke-width="2.5"/>`; }
+  // header
+  const hm2=metaFor(); s+=`<text x="12" y="20" font-size="15" fill="#fff" font-weight="600">Hole ${state.hole}${hm2?`  ·  Par ${hm2.par}`:""}</text>`;
+  const len=holeLength(); if(len) s+=`<text x="${W-12}" y="20" font-size="12" fill="#fff" text-anchor="end" opacity=".85">${len} m</text>`;
+  svg.innerHTML=s;
+}
 function drawHole(){
   if(!map) return;
   const f=autoFlag(); const ln=holeLine();
@@ -1521,6 +1598,7 @@ function drawHole(){
   else { txt+=` — no hole lines yet. "Map this course" (5 minutes on the sofa) or "Load holes from map data".`; }
   if(m&&m.tip) txt+=` Pro tip: ${m.tip}`;
   info.textContent=txt;
+  renderHoleView();
   const osmBtn=document.getElementById("osmBtn"); osmBtn.textContent = courseHasHoles()&&!(window.HOLES[state.course]) ? "Reload holes from map data" : "Load holes from map data";
   updateLive();
 }
@@ -1542,6 +1620,7 @@ function updateLive(){
     ahead.forEach(x=>parts.push(`${{2:"bunker",3:"bunker",4:"water"}[x.p.poi]} ${["left","centre","right"][x.p.side-1]||""} ${Math.round(x.d)} m`));
     hz.textContent=parts.join(" · ");
   } else hz.textContent="";
+  renderHoleView();
 }
 function onFix(p){
   mePos={lat:p.coords.latitude,lng:p.coords.longitude}; lastFix=Date.now();
