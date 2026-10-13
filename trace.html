@@ -41,7 +41,7 @@ function traceView(o){ return new Promise(resolve=>{
       for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){ const j=(gcy+dy)*G+gcx+dx; if(j<0||j>=G*G) continue; hh+=F[j*4]; ss+=F[j*4+1]; vv+=F[j*4+2]; c++; } if(c){ const r2={h:hh/c,s:ss/c,v:vv/c}; if(r2.h>=80&&r2.h<=130&&r2.v>=0.40) ref=r2; } }
     const P=Object.assign({dh:22, dv:0.13, ds:0.16, ft2:0.05, wv:0.30, wt:0.02, sv:0.12, ss:0.30},o.P||{});
     for(let i=0;i<G*G;i++){ const hh=F[i*4], s=F[i*4+1], v=F[i*4+2], t2=T2[i]; let k=0;
-      if(s<0.26&&v>ref.v+0.04&&(hh<75||hh>150||s<0.15)) k=2;                                 // sand: pale and not green
+      if((v>ref.v+0.12&&s<0.30)||(s<0.20&&v>ref.v+0.05&&(hh<70||hh>160))) k=2;                 // sand: pale (strict) or desaturated non-green (loose)
       else if(hh>=165&&hh<=235&&v<P.wv&&s>0.25&&t2<P.wt) k=3;                                 // water: teal, dark, very flat
       else if(Math.abs(hh-ref.h)<=P.dh&&v>=ref.v-P.dv&&Math.abs(s-ref.s)<=P.ds&&t2<P.ft2) k=1; // mown: like the green
       else if(hh>=50&&hh<=175&&(v<ref.v-0.25||t2>=P.ft2)) k=4;                                // trees / scrub
@@ -70,7 +70,11 @@ function traceView(o){ return new Promise(resolve=>{
     const bunker=components(2).filter(c=>{ const a=c.length*cellM*cellM; return a>=20&&a<=2500&&compact(c); }).map(c=>simplify(outline(c),1.0).map(toLatLng)).filter(p=>p.length>=4);
     const fill=c=>{ const xs=c.map(j=>j%G), ys=c.map(j=>Math.floor(j/G)); const w=Math.max(...xs)-Math.min(...xs)+1, hh=Math.max(...ys)-Math.min(...ys)+1; return c.length/(w*hh); };
     const water=components(3).filter(c=>{ const a=c.length*cellM*cellM; return a>=1500&&fill(c)>0.35; }).map(c=>simplify(outline(c),tol).map(toLatLng)).filter(p=>p.length>=4);
-    const bunker2=components(2).filter(c=>{ const a=c.length*cellM*cellM; return a>=25&&a<=1200&&compact(c); }).map(c=>simplify(outline(c),1.0).map(toLatLng)).filter(p=>p.length>=4);
+    { // erode sand by one cell to cut paths, then dilate back inside the original mask
+      const er=new Uint8Array(G*G); for(let y=1;y<G-1;y++) for(let x=1;x<G-1;x++){ if(cls[y*G+x]!==2) continue; let ok=true; for(let dy=-1;dy<=1&&ok;dy++) for(let dx=-1;dx<=1;dx++) if(cls[(y+dy)*G+x+dx]!==2){ok=false;break;} if(ok) er[y*G+x]=1; }
+      const di=new Uint8Array(G*G); for(let y=1;y<G-1;y++) for(let x=1;x<G-1;x++){ if(cls[y*G+x]!==2) continue; let any=false; for(let dy=-1;dy<=1&&!any;dy++) for(let dx=-1;dx<=1;dx++) if(er[(y+dy)*G+x+dx]){any=true;break;} if(any) di[y*G+x]=1; }
+      for(let i=0;i<G*G;i++) if(cls[i]===2&&!di[i]) cls[i]=0; }
+    const bunker2=components(2).filter(c=>{ const a=c.length*cellM*cellM; return a>=25&&a<=1500&&fill(c)>0.3; }).map(c=>simplify(outline(c),1.0).map(toLatLng)).filter(p=>p.length>=4);
     const polys={fairway:polysFor(1,800), bunker:bunker2, water, trees:o.trees?polysFor(4,400):[]};
     polys.green=[];
     if(gx.length===2){ const [gpx,gpy]=toPx(gx[0],gx[1]); const gcx=Math.floor((gpx-x0)/cell), gcy=Math.floor((gpy-y0)/cell);
