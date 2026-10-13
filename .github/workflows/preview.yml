@@ -12,15 +12,14 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: npm i playwright@1.47.0 && npx playwright install --with-deps chromium
-      - name: check Google Map Tiles session
+      - name: diagnostics
         run: |
-          curl -sS -X POST "https://tile.googleapis.com/v1/createSession?key=AIzaSyDyJMWF0R2YOwPfL-gvPbCurmJtM3lRYhY" -H "Content-Type: application/json" -d '{"mapType":"satellite","language":"en-US","region":"TR"}' | head -c 600; echo
-      - run: (python3 -m http.server 8765 >/dev/null 2>&1 &) && sleep 1 && node preview/render.js
-      - name: publish screenshots to the previews branch
+          mkdir -p preview/out
+          curl -sS -X POST "https://tile.googleapis.com/v1/createSession?key=AIzaSyDyJMWF0R2YOwPfL-gvPbCurmJtM3lRYhY" -H "Content-Type: application/json" -d '{"mapType":"satellite","language":"en-US","region":"TR"}' > preview/out/google-session.txt 2>&1 || true
+      - run: (python3 -m http.server 8765 >/dev/null 2>&1 &) && sleep 1 && node preview/render.js 2>&1 | tee preview/out/render.log
+      - name: publish to the previews branch
         run: |
-          git config user.name preview-bot && git config user.email bot@example.com
-          mkdir -p /tmp/out && cp preview/out/*.png /tmp/out/
-          git fetch origin previews || true
-          git checkout -B previews origin/previews 2>/dev/null || git checkout --orphan previews
-          git rm -rf --quiet . 2>/dev/null || true
-          cp /tmp/out/*.png . && git add *.png && git commit -m "preview $(date -u +%H:%M)" && git push -f origin previews
+          rm -rf /tmp/pub && mkdir /tmp/pub && cp preview/out/* /tmp/pub/ && cd /tmp/pub
+          git init -q -b previews && git config user.name preview-bot && git config user.email bot@example.com
+          git add -A && git commit -q -m "preview $(date -u +%H:%M)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" previews
