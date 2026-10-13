@@ -1264,7 +1264,7 @@ function renderChart(){
   s+=`<path d="${d}" fill="none" stroke="#22503C" stroke-width="2.5"/>`;
   pts.forEach((p,i)=>{ s+=`<circle cx="${x(i)}" cy="${y(p.seven)}" r="4" fill="#B9391F"/><text x="${x(i)}" y="${y(p.seven)-9}" font-size="12" text-anchor="middle" fill="#1B241E">${p.seven}</text>`; });
   s+=`<text x="${pad}" y="${H-8}" font-size="11" fill="#5C6B60">${pts[0].date}</text><text x="${W-pad}" y="${H-8}" font-size="11" text-anchor="end" fill="#5C6B60">${pts[pts.length-1].date}</text>`;
-  svg.innerHTML=s;
+  svg.innerHTML=s; document.getElementById("holeView").style.background=S.bg;
 }
 function renderLog(){
   renderChart();
@@ -1503,8 +1503,14 @@ function applyView(){
   if(v!=="hole"){ if(tileLayer) map.removeLayer(tileLayer); tileLayer=TILES[v==="map"?"map":"sat"]().addTo(map); setTimeout(()=>map.invalidateSize(),50); }
   renderHoleView();
 }
+const HV_STYLES={
+  classic:{bg:"#2E5B3C",bg2:"#3C7A4F",bg3:"#1F4A2E",fw:"#7CB46B",green:"#A8E08A",greenEdge:"#DFF5C8",sand:"#F3E6B8",sandEdge:"#C9B57A",water:"#4FA3E8",ink:"#fff",arc:"#fff",arcOp:.25,label:"#1B241E",labelText:"#fff",tee:"#F8FAF5"},
+  daylight:{bg:"#79A95E",bg2:"#8DBA6E",bg3:"#5F8F4A",fw:"#B5DB7C",green:"#D9F2B0",greenEdge:"#F4FBE6",sand:"#F6EBC6",sandEdge:"#D2BE86",water:"#5DAFEB",ink:"#1B241E",arc:"#1B241E",arcOp:.18,label:"#1B241E",labelText:"#fff",tee:"#fff"},
+  paper:{bg:"#EEF2E8",bg2:"#F4F7EF",bg3:"#DDE5D3",fw:"#BFD9A2",green:"#9CCB86",greenEdge:"#5E8F4E",sand:"#F1E2B3",sandEdge:"#C4AE75",water:"#8EC4EE",ink:"#1B241E",arc:"#1B241E",arcOp:.15,label:"#22503C",labelText:"#fff",tee:"#22503C"}
+};
 function renderHoleView(){
   if((state.view||"hole")!=="hole") return;
+  const S=HV_STYLES[state.hvStyle||"classic"]||HV_STYLES.classic;
   const svg=document.getElementById("holeSvg"), empty=document.getElementById("hvEmpty");
   const ln=holeLine(); const pts=apiHolePts();
   if(!ln){ svg.innerHTML=""; empty.hidden=false; return; } empty.hidden=true;
@@ -1527,48 +1533,48 @@ function renderHoleView(){
   const W=360,H=520; const sc=Math.min(W/(maxX-minX), H/(maxY-minY)); const ox=(W-(maxX-minX)*sc)/2, oy=(H-(maxY-minY)*sc)/2;
   const X=a=>ox+(a[0]-minX)*sc, Y=a=>H-oy-(a[1]-minY)*sc;
   const P=a=>`${X(a).toFixed(1)},${Y(a).toFixed(1)}`;
-  let s=`<rect width="${W}" height="${H}" fill="#2E5B3C"/>`;
+  let s=`<rect width="${W}" height="${H}" fill="${S.bg}"/>`;
   // soft rough texture
-  s+=`<rect width="${W}" height="${H}" fill="url(#g)" opacity=".35"/><defs><radialGradient id="g" cx="50%" cy="40%" r="70%"><stop offset="0" stop-color="#3C7A4F"/><stop offset="1" stop-color="#1F4A2E"/></radialGradient></defs>`;
+  s+=`<rect width="${W}" height="${H}" fill="url(#g)" opacity=".35"/><defs><radialGradient id="g" cx="50%" cy="40%" r="70%"><stop offset="0" stop-color="${S.bg2}"/><stop offset="1" stop-color="${S.bg3}"/></radialGradient></defs>`;
   // fairway band along the centreline (no outline data: drawn as a generous corridor), narrows into the green
   const fw=50*sc; const m=metaFor(); const par=m&&m.par;
   const shp = state.course.startsWith("api:") && window.SHAPES && window.SHAPES[state.course.slice(4)] && window.SHAPES[state.course.slice(4)][state.hole];
   // traced shapes are metre offsets from the front tee: rotate into the hole frame (tee = origin of our frame too)
   const shpRot = pts => pts.map(([ex,ny]) => [ex*cs - ny*sn, ex*sn + ny*cs]);
-  if(shp && shp.f.length){ shp.f.forEach(poly=>{ s+=`<polygon points="${shpRot(poly).map(P).join(" ")}" fill="#7CB46B" opacity=".95"/>`; }); }
-  else if(!(par===3)) s+=`<polyline points="${line.map(P).join(" ")}" fill="none" stroke="#7CB46B" stroke-width="${fw}" stroke-linecap="round" stroke-linejoin="round" opacity=".95"/>`;
-  if(shp){ shp.w.forEach(poly=>{ s+=`<polygon points="${shpRot(poly).map(P).join(" ")}" fill="#4FA3E8" opacity=".9"/>`; });
-           shp.b.forEach(poly=>{ s+=`<polygon points="${shpRot(poly).map(P).join(" ")}" fill="#F3E6B8" stroke="#C9B57A" stroke-width=".8"/>`; }); }
-  s+=`<polyline points="${line.map(P).join(" ")}" fill="none" stroke="#fff" stroke-width="1.2" stroke-dasharray="4 5" opacity=".7"/>`;
+  if(shp && shp.f.length){ shp.f.forEach(poly=>{ s+=`<polygon points="${shpRot(poly).map(P).join(" ")}" fill="${S.fw}" opacity=".95"/>`; }); }
+  else if(!(par===3)) s+=`<polyline points="${line.map(P).join(" ")}" fill="none" stroke="${S.fw}" stroke-width="${fw}" stroke-linecap="round" stroke-linejoin="round" opacity=".95"/>`;
+  if(shp){ shp.w.forEach(poly=>{ s+=`<polygon points="${shpRot(poly).map(P).join(" ")}" fill="${S.water}" opacity=".9"/>`; });
+           shp.b.forEach(poly=>{ s+=`<polygon points="${shpRot(poly).map(P).join(" ")}" fill="${S.sand}" stroke="${S.sandEdge}" stroke-width=".8"/>`; }); }
+  s+=`<polyline points="${line.map(P).join(" ")}" fill="none" stroke="${S.ink}" stroke-width="1.2" stroke-dasharray="4 5" opacity=".6"/>`;
   // distance arcs from the player (or from the tee) every 50 m
   const origin=me||line[0]; for(let d=50; d<=300; d+=50){ const r=d*sc; if(r>H*1.3) break;
-    s+=`<circle cx="${X(origin)}" cy="${Y(origin)}" r="${r.toFixed(1)}" fill="none" stroke="#fff" stroke-width=".8" opacity=".25"/><text x="${(X(origin)+4).toFixed(1)}" y="${(Y(origin)-r-3).toFixed(1)}" font-size="9" fill="#fff" opacity=".7">${d}</text>`; }
+    s+=`<circle cx="${X(origin)}" cy="${Y(origin)}" r="${r.toFixed(1)}" fill="none" stroke="${S.arc}" stroke-width=".8" opacity="${S.arcOp}"/><text x="${(X(origin)+4).toFixed(1)}" y="${(Y(origin)-r-3).toFixed(1)}" font-size="9" fill="${S.ink}" opacity=".7">${d}</text>`; }
   // green: ellipse through front/middle/back when known, else circle
   const gf=feats.find(p=>p.poi===1&&p.loc===1), gb=feats.find(p=>p.poi===1&&p.loc===3), gm=feats.find(p=>p.poi===1&&p.loc===2)||{xy:line[line.length-1]};
   const depth = gf&&gb ? Math.hypot(gb.xy[0]-gf.xy[0],gb.xy[1]-gf.xy[1]) : 30; const gang = gf&&gb ? Math.atan2(gb.xy[0]-gf.xy[0], gb.xy[1]-gf.xy[1]) : 0;
-  if(shp && shp.g.length){ shp.g.forEach(poly=>{ s+=`<polygon points="${shpRot(poly).map(P).join(" ")}" fill="#A8E08A" stroke="#DFF5C8" stroke-width="1.5"/>`; }); }
-  else s+=`<g transform="translate(${X(gm.xy)},${Y(gm.xy)}) rotate(${(gang*180/Math.PI).toFixed(1)})"><ellipse rx="${(depth*0.42*sc).toFixed(1)}" ry="${(depth*0.55*sc).toFixed(1)}" fill="#A8E08A" stroke="#DFF5C8" stroke-width="1.5"/></g>`;
-  if(gf) s+=`<text x="${X(gf.xy)+10}" y="${Y(gf.xy)+4}" font-size="9" fill="#fff" opacity=".8">F</text>`;
-  if(gb) s+=`<text x="${X(gb.xy)+10}" y="${Y(gb.xy)+4}" font-size="9" fill="#fff" opacity=".8">B</text>`;
+  if(shp && shp.g.length){ shp.g.forEach(poly=>{ s+=`<polygon points="${shpRot(poly).map(P).join(" ")}" fill="${S.green}" stroke="${S.greenEdge}" stroke-width="1.5"/>`; }); }
+  else s+=`<g transform="translate(${X(gm.xy)},${Y(gm.xy)}) rotate(${(gang*180/Math.PI).toFixed(1)})"><ellipse rx="${(depth*0.42*sc).toFixed(1)}" ry="${(depth*0.55*sc).toFixed(1)}" fill="${S.green}" stroke="${S.greenEdge}" stroke-width="1.5"/></g>`;
+  if(gf) s+=`<text x="${X(gf.xy)+10}" y="${Y(gf.xy)+4}" font-size="9" fill="${S.ink}" opacity=".8">F</text>`;
+  if(gb) s+=`<text x="${X(gb.xy)+10}" y="${Y(gb.xy)+4}" font-size="9" fill="${S.ink}" opacity=".8">B</text>`;
   // hazards
-  feats.forEach(p=>{ if(p.poi===2||p.poi===3) s+=`<ellipse cx="${X(p.xy)}" cy="${Y(p.xy)}" rx="${(7*sc+3).toFixed(1)}" ry="${(5*sc+2).toFixed(1)}" fill="#F3E6B8" stroke="#C9B57A"/>`;
-    if(p.poi===4) s+=`<ellipse cx="${X(p.xy)}" cy="${Y(p.xy)}" rx="${(12*sc+4).toFixed(1)}" ry="${(8*sc+3).toFixed(1)}" fill="#4FA3E8" opacity=".9"/>`;
+  feats.forEach(p=>{ if(p.poi===2||p.poi===3) s+=`<ellipse cx="${X(p.xy)}" cy="${Y(p.xy)}" rx="${(7*sc+3).toFixed(1)}" ry="${(5*sc+2).toFixed(1)}" fill="${S.sand}" stroke="${S.sandEdge}"/>`;
+    if(p.poi===4) s+=`<ellipse cx="${X(p.xy)}" cy="${Y(p.xy)}" rx="${(12*sc+4).toFixed(1)}" ry="${(8*sc+3).toFixed(1)}" fill="${S.water}" opacity=".9"/>`;
     if(p.poi===5) s+=`<circle cx="${X(p.xy)}" cy="${Y(p.xy)}" r="${(4*sc+2).toFixed(1)}" fill="#1F4A2E" stroke="#163A24"/>`; });
   // tees
-  feats.filter(p=>p.poi===11||p.poi===12).forEach(p=>{ s+=`<rect x="${X(p.xy)-7}" y="${Y(p.xy)-4}" width="14" height="8" rx="2" fill="${p.poi===12?"#1B241E":"#F8FAF5"}" stroke="#fff" stroke-width="1"/>`; });
+  feats.filter(p=>p.poi===11||p.poi===12).forEach(p=>{ s+=`<rect x="${X(p.xy)-7}" y="${Y(p.xy)-4}" width="14" height="8" rx="2" fill="${p.poi===12?S.label:S.tee}" stroke="${S.ink}" stroke-width="1"/>`; });
   if(!feats.length) s+=`<rect x="${X(line[0])-7}" y="${Y(line[0])-4}" width="14" height="8" rx="2" fill="#F8FAF5" stroke="#fff"/>`;
   // shots and flag
-  if(shots.length){ const path=[...shots, ...(flag?[flag]:[])]; s+=`<polyline points="${path.map(P).join(" ")}" fill="none" stroke="#fff" stroke-width="1.5" stroke-dasharray="3 4"/>`; shots.forEach(a=>s+=`<circle cx="${X(a)}" cy="${Y(a)}" r="3.5" fill="#fff" stroke="#1B241E"/>`); }
+  if(shots.length){ const path=[...shots, ...(flag?[flag]:[])]; s+=`<polyline points="${path.map(P).join(" ")}" fill="none" stroke="${S.ink}" stroke-width="1.5" stroke-dasharray="3 4"/>`; shots.forEach(a=>s+=`<circle cx="${X(a)}" cy="${Y(a)}" r="3.5" fill="#fff" stroke="#1B241E"/>`); }
   if(flag){ s+=`<line x1="${X(flag)}" y1="${Y(flag)}" x2="${X(flag)}" y2="${Y(flag)-16}" stroke="#1B241E" stroke-width="1.5"/><polygon points="${X(flag)},${Y(flag)-16} ${X(flag)+9},${Y(flag)-12} ${X(flag)},${Y(flag)-8}" fill="#B9391F"/>`; }
   // me + line to flag with distance
-  if(me){ if(flag){ s+=`<line x1="${X(me)}" y1="${Y(me)}" x2="${X(flag)}" y2="${Y(flag)}" stroke="#fff" stroke-width="1.5" opacity=".8"/>`;
+  if(me){ if(flag){ s+=`<line x1="${X(me)}" y1="${Y(me)}" x2="${X(flag)}" y2="${Y(flag)}" stroke="${S.ink}" stroke-width="1.5" opacity=".8"/>`;
       const mid=[(me[0]+flag[0])/2,(me[1]+flag[1])/2]; const d=Math.round(Math.hypot(flag[0]-me[0],flag[1]-me[1]));
-      s+=`<rect x="${X(mid)-20}" y="${Y(mid)-10}" width="40" height="18" rx="9" fill="#1B241E" opacity=".85"/><text x="${X(mid)}" y="${Y(mid)+4}" font-size="11" fill="#fff" text-anchor="middle" font-weight="600">${d} m</text>`; }
+      s+=`<rect x="${X(mid)-20}" y="${Y(mid)-10}" width="40" height="18" rx="9" fill="${S.label}" opacity=".9"/><text x="${X(mid)}" y="${Y(mid)+4}" font-size="11" fill="${S.labelText}" text-anchor="middle" font-weight="600">${d} m</text>`; }
     s+=`<circle cx="${X(me)}" cy="${Y(me)}" r="7" fill="#1E73E8" stroke="#fff" stroke-width="2.5"/>`; }
   // header
-  const hm2=metaFor(); s+=`<text x="12" y="20" font-size="15" fill="#fff" font-weight="600">Hole ${state.hole}${hm2?`  ·  Par ${hm2.par}`:""}</text>`;
-  const len=holeLength(); if(len) s+=`<text x="${W-12}" y="20" font-size="12" fill="#fff" text-anchor="end" opacity=".85">${len} m</text>`;
-  svg.innerHTML=s;
+  const hm2=metaFor(); s+=`<text x="12" y="20" font-size="15" fill="${S.ink}" font-weight="600">Hole ${state.hole}${hm2?`  ·  Par ${hm2.par}`:""}</text>`;
+  const len=holeLength(); if(len) s+=`<text x="${W-12}" y="20" font-size="12" fill="${S.ink}" text-anchor="end" opacity=".85">${len} m</text>`;
+  svg.innerHTML=s; document.getElementById("holeView").style.background=S.bg;
 }
 function drawHole(){
   if(!map) return;
