@@ -859,6 +859,11 @@ svg.leaflet-image-layer.leaflet-interactive path {
     <div class="holes" id="holes"></div>
     <div id="map"></div>
     <p class="note" id="holeInfo" style="margin:-4px 0 10px"></p>
+    <div id="mapPanel" class="advice" hidden style="margin:0 0 12px">
+      <h3 style="font-size:16px">Mapping hole <span id="mapHoleNo">1</span></h3>
+      <p id="mapStep">Tap the <strong>tee</strong> on the satellite image.</p>
+      <div class="gpsbar"><button class="ghost" id="mapDogleg" hidden>Add dogleg point</button><button class="ghost" id="mapUndo">Undo point</button><button class="ghost" id="mapSkip">Skip hole</button><button class="ghost" id="mapExport">Copy course data</button></div>
+    </div>
     <div class="live">
       <div class="stat"><div class="num" id="dFlag">–</div><span>m to flag</span></div>
       <div class="stat"><div class="num" id="dClub">–</div><span>club for that</span></div>
@@ -869,9 +874,11 @@ svg.leaflet-image-layer.leaflet-interactive path {
       <button class="ghost" id="flagBtn">Place flag by tap</button>
       <button class="ghost" id="centreBtn">Centre on me</button>
       <button class="ghost" id="osmBtn">Load holes from map data</button>
+      <button class="ghost" id="mapModeBtn">Map this course</button>
     </div>
     <div class="row">
       <div class="field"><label for="shotClub">Club in hand</label><select id="shotClub"></select></div>
+      <div class="field"><label for="teeSel">Playing from</label><select id="teeSel"><option value="1">Yellow tees</option><option value="0">Black tees</option><option value="2">White tees</option><option value="3">Red tees</option></select></div>
       <div class="field"><label for="shotLie">Lie</label>
         <select id="shotLie"><option value="tee">Tee</option><option value="fairway">Fairway</option><option value="lrough">Light rough</option><option value="hrough">Heavy rough</option><option value="fbunker">Fairway bunker</option><option value="gbunker">Greenside bunker</option></select>
       </div>
@@ -1273,7 +1280,8 @@ const COURSES = [
   {id:"titanic", name:"Titanic Golf Club",                   lat:36.8665, lng:30.9767, bbox:[36.861,30.969,36.872,30.981]},
   {id:"cullinan",name:"Cullinan Links",                      lat:36.8609, lng:30.9681, bbox:[36.856,30.961,36.866,30.974]},
   {id:"kaya",    name:"Kaya Palazzo Golf Club",              lat:36.8630, lng:30.9990, bbox:[36.856,30.990,36.870,31.006]},
-  {id:"agc",     name:"Antalya Golf Club — PGA Sultan / Pasha (Sirene)", lat:36.8682, lng:30.9956, bbox:[36.860,30.986,36.877,31.005]},
+  {id:"agcsultan",name:"Antalya Golf Club — PGA Sultan",     lat:36.8662, lng:30.9950, bbox:[36.858,30.984,36.878,31.006]},
+  {id:"agcpasha", name:"Antalya Golf Club — The Pasha",      lat:36.8700, lng:30.9960, bbox:[36.858,30.984,36.878,31.006]},
   {id:"cornelia",name:"Cornelia Golf Club (Faldo)",          lat:36.8592, lng:31.0476, bbox:[36.852,31.040,36.868,31.058]},
   {id:"sueno",   name:"Sueno Pines / Dunes",                 lat:36.8621, lng:31.0268, bbox:[36.855,31.015,36.870,31.055]},
   {id:"tat",     name:"TAT International Golf",              lat:36.8600, lng:30.9852, bbox:[36.852,30.978,36.866,30.994]},
@@ -1316,15 +1324,59 @@ async function loadOsmHoles(){
   btn.textContent=`Loaded ${n} holes ✓`; renderHoles(); drawHole();
 }
 document.getElementById("osmBtn").addEventListener("click",loadOsmHoles);
+
+/* ---------- "Map this course": tap tee, (dogleg), green for each hole ---------- */
+let mapping=false, mapPts=[];
+function metaFor(){ const m=window.COURSE_META[state.course]; return m&&m.holes[state.hole]; }
+function holeHeader(){
+  const m=metaFor(); if(!m) return `Hole ${state.hole}`;
+  const t=parseInt(document.getElementById("teeSel").value||1); return `Hole ${state.hole} · Par ${m.par} · ${m.name} · ${m.d[t]} m from the ${window.COURSE_META[state.course].tees[t].toLowerCase()} tees`;
+}
+function setMapping(on){
+  mapping=on; mapPts=[]; document.getElementById("mapPanel").hidden=!on; placing=false;
+  document.getElementById("mapModeBtn").textContent=on?"Stop mapping":"Map this course";
+  if(on){ const ln=holeLine(); if(ln&&!(state.osmHoles&&state.osmHoles[state.course]&&state.osmHoles[state.course][state.hole])) {/* keep bundled */} }
+  renderMapStep(); drawHole();
+}
+function renderMapStep(){
+  document.getElementById("mapHoleNo").textContent=state.hole;
+  const st=document.getElementById("mapStep"); const dl=document.getElementById("mapDogleg");
+  if(mapPts.length===0){ st.innerHTML='Tap the <strong>tee</strong> on the satellite image (the yellow/white tee box).'; dl.hidden=true; }
+  else { st.innerHTML=`Tee set. Now tap the <strong>green centre</strong>${mapPts.length>1?" (dogleg point added)":""}. For a dogleg, tap the corner first and press "Add dogleg point".`; dl.hidden=false; }
+}
+function mapTap(ll){
+  mapPts.push([ll.lat,ll.lng]);
+  if(mapPts.length>=2 && !pendingDogleg){ // second (or later) tap = green
+    state.osmHoles=state.osmHoles||{}; state.osmHoles[state.course]=state.osmHoles[state.course]||{};
+    state.osmHoles[state.course][state.hole]=mapPts.slice(); save();
+    const len=holeLength(); const m=metaFor(); let msg=`Hole ${state.hole} saved: ${len} m.`;
+    if(m){ const ref=m.d[1]; if(Math.abs(len-ref)>60) msg+=` Card says ${ref} m from yellow — check the tee/green you tapped.`; }
+    document.getElementById("gpsMsg").textContent=msg;
+    mapPts=[]; if(state.hole<18){ state.hole++; } else { setMapping(false); alert("All 18 holes mapped. Press 'Copy course data' and send it to me so it ships with the app."); }
+    renderHoles(); renderMapStep(); drawHole(); return;
+  }
+  pendingDogleg=false; renderMapStep(); drawHole();
+}
+let pendingDogleg=false;
+document.getElementById("mapModeBtn").addEventListener("click",()=>setMapping(!mapping));
+document.getElementById("mapDogleg").addEventListener("click",()=>{ pendingDogleg=true; document.getElementById("mapStep").innerHTML='Now tap the <strong>dogleg corner</strong> (the point you aim at from the tee), then the green.'; });
+document.getElementById("mapUndo").addEventListener("click",()=>{ mapPts.pop(); pendingDogleg=false; renderMapStep(); drawHole(); });
+document.getElementById("mapSkip").addEventListener("click",()=>{ mapPts=[]; if(state.hole<18) state.hole++; renderHoles(); renderMapStep(); drawHole(); });
+document.getElementById("mapExport").addEventListener("click",()=>{
+  const d=(state.osmHoles&&state.osmHoles[state.course])||{}; const txt=`${state.course}: ${JSON.stringify(d)}`;
+  navigator.clipboard?.writeText(txt).then(()=>alert("Course data copied. Paste it to Claude in the chat and it will be built into the app for everyone.")).catch(()=>prompt("Copy this:",txt));
+});
+document.getElementById("teeSel").addEventListener("change",drawHole);
 function initMap(){
   if(map) return;
+  document.getElementById("teeSel").closest(".field").style.display = window.COURSE_META[state.course]?"":"none";
   const c=courseObj();
   map=L.map("map",{zoomControl:true}).setView([c.lat,c.lng],16);
   tileLayer=TILES.sat().addTo(map);
   shotLayer=L.layerGroup().addTo(map);
-  map.on("click",e=>{ if(placing){ setFlag(e.latlng); placing=false; document.getElementById("flagBtn").textContent="Place flag by tap"; }});
+  map.on("click",e=>{ if(mapping){ mapTap(e.latlng); return; } if(placing){ setFlag(e.latlng); placing=false; document.getElementById("flagBtn").textContent="Place flag by tap"; }});
   const sel=document.getElementById("course"); sel.innerHTML=COURSES.map(c=>`<option value="${c.id}">${c.name}</option>`).join(""); sel.value=state.course;
-  sel.addEventListener("change",e=>{ state.course=e.target.value; state.hole=1; const k=courseObj(); map.setView([k.lat,k.lng],16); save(); renderHoles(); drawHole(); });
+  sel.addEventListener("change",e=>{ state.course=e.target.value; state.hole=1; if(mapping) setMapping(false); document.getElementById("teeSel").closest(".field").style.display = window.COURSE_META[state.course]?"":"none"; const k=courseObj(); map.setView([k.lat,k.lng],16); save(); renderHoles(); drawHole(); });
   document.getElementById("unitSel").addEventListener("change",e=>{ map.removeLayer(tileLayer); tileLayer=TILES[e.target.value]().addTo(map); });
   const sc=document.getElementById("shotClub"); sc.innerHTML=CLUBS.map(c=>`<option value="${c.k}">${c.name}</option>`).join(""); sc.value="7i";
   renderHoles(); drawHole(); renderRound(); renderLearned();
@@ -1353,14 +1405,22 @@ function drawHole(){
     flagMarker.on("dragend",e=>setFlag(e.target.getLatLng())); }
   if(ln){ map.fitBounds(L.latLngBounds(ln),{padding:[30,30],maxZoom:18}); }
   else if(f&&!mePos){ map.setView([f.lat,f.lng],17); }
+  else if(!mapPts.length){ // unmapped hole: start where the previous green is (next tee is usually close)
+    const src=(state.osmHoles&&state.osmHoles[state.course])||window.HOLES[state.course]||{}; const prev=src[state.hole-1]||src[18];
+    if(prev){ const g=prev[prev.length-1]; map.setView(g,17); } }
   const pts=holeShots().map(s=>[s.lat,s.lng]);
   if(f&&pts.length) pts.push([f.lat,f.lng]);
   if(pts.length>1) L.polyline(pts,{color:"#fff",weight:2,dashArray:"4 6"}).addTo(shotLayer);
   holeShots().forEach((s,i)=>L.marker([s.lat,s.lng],{icon:L.divIcon({className:"",html:`<div class="ball-pin" title="${s.club}"></div>`,iconSize:[10,10],iconAnchor:[5,5]})}).bindTooltip(`${i+1}: ${s.club}`).addTo(shotLayer));
-  const info=document.getElementById("holeInfo"); const len=holeLength();
-  if(ln){ info.textContent=`Hole ${state.hole}: ${len} m along the centreline${ln.length>2?" (dogleg)":""}. Flag set to the green centre — drag it to today's pin position.`; }
-  else if(courseHasHoles()){ info.textContent=`Hole ${state.hole}: not in the map data — tap "Place flag by tap".`; }
-  else { info.textContent=`No hole lines loaded for this course. Tap "Load holes from map data", or place flags by hand.`; }
+  if(mapping&&mapPts.length){ mapPts.forEach((pt,i)=>L.circleMarker(pt,{radius:7,color:"#fff",weight:2,fillColor:i?"#B9391F":"#22503C",fillOpacity:1}).addTo(shotLayer)); if(mapPts.length>1) L.polyline(mapPts,{color:"#B9391F",weight:2}).addTo(shotLayer); }
+  const info=document.getElementById("holeInfo"); const len=holeLength(); const m=metaFor();
+  let txt=holeHeader();
+  if(ln){ txt+=` — ${len} m on the map${ln.length>2?" (dogleg)":""}. Flag on the green centre; drag it to today's pin.`; }
+  else if(mapping){ txt+=" — mapping."; }
+  else if(courseHasHoles()){ txt+=` — not mapped yet. Use "Map this course" or place the flag by tap.`; }
+  else { txt+=` — no hole lines yet. "Map this course" (5 minutes on the sofa) or "Load holes from map data".`; }
+  if(m&&m.tip) txt+=` Pro tip: ${m.tip}`;
+  info.textContent=txt;
   const osmBtn=document.getElementById("osmBtn"); osmBtn.textContent = courseHasHoles()&&!(window.HOLES[state.course]) ? "Reload holes from map data" : "Load holes from map data";
   updateLive();
 }
@@ -1426,7 +1486,7 @@ function renderRound(){
   box.innerHTML=`<table><thead><tr><th>Hole</th><th class="r">Shots</th><th class="r">Putts</th><th class="r">Score</th><th>Measured</th></tr></thead><tbody>`+
     Object.keys(holes).sort((a,b)=>a-b).map(h=>{ const o=holes[h]; const sc=o.done?o.strokes+o.putts:null; if(sc) total+=sc;
       const m=ms.filter(s=>s.hole==+h).map(s=>`${s.club} ${s.dist}m`).join(", ");
-      return `<tr><td>${h}</td><td class="r">${o.strokes}</td><td class="r">${o.done?o.putts:"–"}</td><td class="r">${sc??"…"}</td><td><small>${m}</small></td></tr>`; }).join("")+
+      const pm=window.COURSE_META[state.course]&&window.COURSE_META[state.course].holes[h]; return `<tr><td>${h}${pm?` <small style="color:#5C6B60">par ${pm.par}</small>`:""}</td><td class="r">${o.strokes}</td><td class="r">${o.done?o.putts:"–"}</td><td class="r">${sc??"…"}</td><td><small>${m}</small></td></tr>`; }).join("")+
     `</tbody></table><p class="note">Total so far: <strong>${total}</strong> on ${Object.values(holes).filter(o=>o.done).length} holes.</p>`;
 }
 function learnedStats(){
