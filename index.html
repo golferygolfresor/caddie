@@ -677,6 +677,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
 <script src="leaflet.js"></script>
 <script src="holes.js"></script>
 <script src="courses.js"></script>
+<script src="climate.js"></script>
 <script src="shapes.js"></script>
 <style>
   #map{height:42vh;min-height:260px;max-height:420px;border-radius:10px;border:1px solid var(--line);margin-bottom:12px;background:#dfe6d8}
@@ -772,6 +773,20 @@ svg.leaflet-image-layer.leaflet-interactive path {
   @media (min-width:641px){ nav button .ic{display:none} }
   .install{display:none;background:var(--sand);color:var(--ink);padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:14px}
   .install button{margin-left:8px}
+  .wx{margin:12px 0}
+  .wxhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px}
+  .wxhead span{font-size:13px;color:var(--muted)}
+  .wxstrip{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 8px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+  .wxd{flex:0 0 86px;scroll-snap-align:start;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 6px;text-align:center;font-size:12px;color:var(--muted);cursor:pointer}
+  .wxd b{display:block;color:var(--ink);font-size:13px}
+  .wxd .ico{font-size:22px;line-height:1.3;display:block}
+  .wxd .t{color:var(--ink);font-size:15px;font-weight:600}
+  .wxd .r{display:block;margin-top:4px;border-radius:4px;padding:1px 0;font-size:11px;font-weight:600}
+  .wxd.sel{border-color:var(--green);box-shadow:0 0 0 2px #EEF5EC inset}
+  .r.good{background:#DCEFD9;color:#1F5A2A}.r.ok{background:#F4E9C8;color:#6B5212}.r.poor{background:#F6D9D2;color:#8A2A16}
+  .wxh{display:flex;gap:3px;align-items:flex-end;height:46px;margin:6px 0 2px}
+  .wxh i{flex:1;background:#CFE3F5;border-radius:2px 2px 0 0;min-height:2px;position:relative}
+  .wxh i.in{background:#22503C}
   .suntimes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
   .suntimes .stat .num{font-size:30px}
   .suntimes .stat.first{border-color:var(--green);background:#EEF5EC}
@@ -1055,6 +1070,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
       <div class="stat"><div class="num" id="sunrise">–</div><span>sunrise</span></div>
       <div class="stat"><div class="num" id="sunset">–</div><span>sunset</span></div>
     </div>
+    <div class="wx" id="wxPanel"><div class="wxhead"><strong id="wxTitle">Weather</strong><span id="wxNote">loading forecast…</span></div><div class="wxstrip" id="wxStrip"></div><div id="wxDay"></div></div>
     <svg class="sun" id="sunChart" viewBox="0 0 700 200" preserveAspectRatio="none" aria-label="Sun elevation through the day"></svg>
     <div class="sunlegend"><span><i style="background:#D8C89B"></i>playable daylight</span><span><i style="background:#22503C"></i>sun above 45° — best scoring light</span><span><i style="background:#B9391F"></i>last round</span></div>
     <div id="sunAdvice"></div>
@@ -1801,6 +1817,58 @@ function solar(date, lat, lng){
     sunrise:cross(-0.833,true), sunset:cross(-0.833,false), dawn:cross(-6,true), dusk:cross(-6,false), ballUp:cross(5,true), ballDown:cross(5,false),
     noon: e.indexOf(Math.max(...e)), maxElev: Math.max(...e) };
 }
+
+/* ---------- weather: Open-Meteo (free, no key) 16-day forecast for the selected course; beyond that, climate statistics ---------- */
+const WMO={0:["☀️","clear"],1:["🌤️","mostly clear"],2:["⛅","partly cloudy"],3:["☁️","overcast"],45:["🌫️","fog"],48:["🌫️","fog"],51:["🌦️","drizzle"],53:["🌦️","drizzle"],55:["🌧️","drizzle"],56:["🌧️","freezing drizzle"],57:["🌧️","freezing drizzle"],61:["🌦️","light rain"],63:["🌧️","rain"],65:["🌧️","heavy rain"],66:["🌧️","freezing rain"],67:["🌧️","freezing rain"],71:["🌨️","snow"],73:["🌨️","snow"],75:["❄️","heavy snow"],77:["🌨️","snow grains"],80:["🌦️","showers"],81:["🌧️","showers"],82:["⛈️","heavy showers"],85:["🌨️","snow showers"],86:["🌨️","snow showers"],95:["⛈️","thunderstorm"],96:["⛈️","thunderstorm, hail"],99:["⛈️","thunderstorm, hail"]};
+const wmo=c=>WMO[c]||["🌡️","—"];
+let WX=null; // {key, t, daily, hourly}
+function wxRating(d){ // golf playability for a day: rain, wind, temperature
+  let pts=0; const why=[];
+  if(d.pp>=60||d.rain>=5){pts+=2;why.push("rain");} else if(d.pp>=35||d.rain>=1){pts+=1;why.push("showers possible");}
+  if(d.wind>=10){pts+=2;why.push("strong wind");} else if(d.wind>=7){pts+=1;why.push("breezy");}
+  if(d.tmax<8||d.tmax>=37){pts+=2;why.push(d.tmax<8?"cold":"very hot");} else if(d.tmax<12||d.tmax>=33){pts+=1;why.push(d.tmax<12?"chilly":"hot");}
+  return {cls:pts>=3?"poor":pts>=1?"ok":"good", label:pts>=3?"Poor":pts>=1?"OK":"Good", why};
+}
+async function loadWx(c){
+  const key=c.id; const now=Date.now();
+  if(!WX){ try{ const j=JSON.parse(localStorage.getItem("caddie-wx")||"null"); if(j) WX=j; }catch{} }
+  if(WX&&WX.key===key&&now-WX.t<3*3600e3) return WX;
+  const u=`https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lng}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,cloud_cover_mean&hourly=precipitation_probability,precipitation,wind_speed_10m,temperature_2m,cloud_cover&forecast_days=16&wind_speed_unit=ms&timezone=auto`;
+  const r=await fetch(u); if(!r.ok) throw new Error("forecast "+r.status); const j=await r.json();
+  const daily=j.daily.time.map((t,i)=>({date:t,code:j.daily.weather_code[i],tmax:j.daily.temperature_2m_max[i],tmin:j.daily.temperature_2m_min[i],rain:j.daily.precipitation_sum[i],pp:j.daily.precipitation_probability_max[i]??0,wind:j.daily.wind_speed_10m_max[i],gust:j.daily.wind_gusts_10m_max[i],cloud:j.daily.cloud_cover_mean[i]}));
+  const hourly={}; j.hourly.time.forEach((t,i)=>{ const d=t.slice(0,10); (hourly[d]=hourly[d]||[]).push({h:+t.slice(11,13),pp:j.hourly.precipitation_probability[i]??0,rain:j.hourly.precipitation[i]||0,wind:j.hourly.wind_speed_10m[i],temp:j.hourly.temperature_2m[i],cloud:j.hourly.cloud_cover[i]}); });
+  WX={key,t:now,daily,hourly}; try{ localStorage.setItem("caddie-wx",JSON.stringify(WX)); }catch{} return WX;
+}
+function wxSkyFromCloud(cloud){ return cloud>=75?"20":cloud>=40?"10":"0"; }
+function renderWxStrip(c, dateStr){
+  const strip=document.getElementById("wxStrip"), note=document.getElementById("wxNote");
+  if(!WX||WX.key!==c.id){ strip.innerHTML=""; return; }
+  note.textContent=`next ${WX.daily.length} days · Open-Meteo · updated ${new Date(WX.t).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}`;
+  strip.innerHTML=WX.daily.map(d=>{ const r=wxRating(d); const dt=new Date(d.date+"T12:00:00"); const [ico,txt]=wmo(d.code);
+    return `<div class="wxd${d.date===dateStr?" sel":""}" data-date="${d.date}" title="${txt}"><b>${dt.toLocaleDateString(undefined,{weekday:"short"})} ${dt.getDate()}</b><span class="ico">${ico}</span><span class="t">${Math.round(d.tmax)}°</span><br>${d.pp}% · ${Math.round(d.wind)} m/s<span class="r ${r.cls}">${r.label}</span></div>`; }).join("");
+  strip.querySelectorAll(".wxd").forEach(el=>el.addEventListener("click",()=>{ document.getElementById("sunDate").value=el.dataset.date; const d=WX.daily.find(x=>x.date===el.dataset.date); if(d) document.getElementById("skySel").value=wxSkyFromCloud(d.cloud); renderSun(); }));
+  const sel=strip.querySelector(".wxd.sel"); if(sel) sel.scrollIntoView({inline:"center",block:"nearest"});
+}
+function bestTeeWindow(hours, first, last, len){ // scan tee times in 30-min steps; score = rain probability (weighted) + wind
+  let best=null; for(let t=Math.ceil(first/30)*30; t<=last; t+=30){ const a=t/60, b=(t+len)/60; const hs=hours.filter(h=>h.h+0.5>=a&&h.h+0.5<=b); if(!hs.length) continue;
+    const pp=hs.reduce((s,h)=>s+h.pp,0)/hs.length, rain=hs.reduce((s,h)=>s+h.rain,0), wind=Math.max(...hs.map(h=>h.wind)), temp=hs.reduce((s,h)=>s+h.temp,0)/hs.length;
+    const score=pp+wind*4+rain*10; if(!best||score<best.score) best={t,score,pp:Math.round(pp),rain:+rain.toFixed(1),wind:Math.round(wind),temp:Math.round(temp)}; }
+  return best;
+}
+function renderWxDay(c, dateStr, first, last, finishBy, len){
+  const box=document.getElementById("wxDay"); const title=document.getElementById("wxTitle");
+  const d=WX&&WX.key===c.id?WX.daily.find(x=>x.date===dateStr):null;
+  if(d){ const r=wxRating(d); const [ico,txt]=wmo(d.code); const hs=WX.hourly[dateStr]||[]; const best=bestTeeWindow(hs,first,last,len);
+    title.textContent="Forecast";
+    let bars=""; if(hs.length){ const mx=Math.max(10,...hs.map(h=>h.pp)); bars=`<div class="wxh">`+hs.map(h=>{ const inR=best&&h.h+0.5>=best.t/60&&h.h+0.5<=(best.t+len)/60; return `<i class="${inR?"in":""}" style="height:${Math.max(4,h.pp/mx*100)}%" title="${String(h.h).padStart(2,"0")}:00 — ${h.pp}% rain, ${Math.round(h.wind)} m/s, ${Math.round(h.temp)}°"></i>`; }).join("")+`</div><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>`; }
+    box.innerHTML=`<div class="advice"><p><strong>${ico} ${txt}</strong>, ${Math.round(d.tmin)}–${Math.round(d.tmax)}°C, rain ${d.pp}% (${d.rain} mm), wind up to ${Math.round(d.wind)} m/s (gusts ${Math.round(d.gust)}), cloud ${Math.round(d.cloud)}%. Golf: <span class="r ${r.cls}" style="padding:1px 6px;border-radius:4px">${r.label}</span>${r.why.length?" — "+r.why.join(", "):""}.</p>
+      ${best?`<p><strong>Best tee time ${hm(best.t)}</strong> (round ${hm(best.t)}–${hm(best.t+len)}): ${best.pp}% rain chance over the round, ${best.rain} mm, wind to ${best.wind} m/s, ${best.temp}°C. Hourly rain chance below — dark bars are your round.</p>${bars}`:""}</div>`;
+  } else {
+    const dt=new Date(dateStr+"T12:00:00"); const m=dt.getMonth(), half=dt.getDate()<=15?0:1; const cl=window.CLIMATE&&window.CLIMATE[m*2+half];
+    title.textContent="Typical weather"; const label=dt.toLocaleDateString(undefined,{month:"long"});
+    box.innerHTML=cl?`<div class="advice"><p><strong>${half?"Late":"Early"} ${label}, Belek average ${window.CLIMATE.years}:</strong> ${cl.tmax}°C by day, ${cl.tmin}°C at night, wind ${cl.wind} m/s. Rain on ${cl.rainDays}% of days (${cl.rainmm} mm per month), sunshine ${cl.sun} h/day; ${cl.good}% of days are good golf days, ${cl.poor}% poor. The 16-day forecast appears here once the date is within range.</p></div>`:`<div class="advice"><p>No forecast beyond 16 days — pick a nearer date for the live forecast.</p></div>`;
+  }
+}
 const hm=m=> m==null? "–" : `${String(Math.floor(m/60)).padStart(2,"0")}:${String(Math.round(m%60)).padStart(2,"0")}`;
 function renderSun(){
   const sel=document.getElementById("sunCourse"); const c=COURSES.find(x=>x.id===sel.value)||COURSES[0];
@@ -1814,6 +1882,9 @@ function renderSun(){
   document.getElementById("lastTee").textContent=hm(last);
   document.getElementById("firstTeeNote").textContent=sky?`earliest realistic first tee (sunrise + ${sky} min for cloud)`:"earliest realistic first tee (sunrise)";
   document.getElementById("lastTeeNote").textContent=`latest tee — holed out by ${hm(finishBy)}, ${MARGIN+sky} min before sunset`;
+  const dateStr=document.getElementById("sunDate").value;
+  renderWxStrip(c,dateStr); renderWxDay(c,dateStr,first,last,finishBy,len);
+  if(!WX||WX.key!==c.id){ loadWx(c).then(()=>renderSun()).catch(e=>{ document.getElementById("wxNote").textContent="forecast unavailable (offline?)"; console.warn(e); }); }
   document.getElementById("sunrise").textContent=hm(s.sunrise);
   document.getElementById("sunset").textContent=hm(s.sunset);
   // chart
