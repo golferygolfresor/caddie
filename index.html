@@ -1045,10 +1045,13 @@ svg.leaflet-image-layer.leaflet-interactive path {
       <div class="field"><label for="roundLen">Round length</label>
         <select id="roundLen"><option value="4.5">4 h 30 (18 holes)</option><option value="4">4 h 00 (quick 18)</option><option value="5">5 h 00 (slow / buggy queue)</option><option value="2.25">2 h 15 (9 holes)</option></select>
       </div>
+      <div class="field"><label for="skySel">Sky</label>
+        <select id="skySel"><option value="0">Clear</option><option value="10">Some cloud (+10 min)</option><option value="20">Overcast (+20 min)</option></select>
+      </div>
     </div>
     <div class="suntimes">
-      <div class="stat first"><div class="num" id="firstTee">–</div><span>first tee (civil dawn — you can see the ball)</span></div>
-      <div class="stat last"><div class="num" id="lastTee">–</div><span>last tee to finish by sunset</span></div>
+      <div class="stat first"><div class="num" id="firstTee">–</div><span id="firstTeeNote">earliest realistic first tee (sunrise)</span></div>
+      <div class="stat last"><div class="num" id="lastTee">–</div><span id="lastTeeNote">latest tee — holed out 15 min before sunset</span></div>
       <div class="stat"><div class="num" id="sunrise">–</div><span>sunrise</span></div>
       <div class="stat"><div class="num" id="sunset">–</div><span>sunset</span></div>
     </div>
@@ -1795,7 +1798,7 @@ function solar(date, lat, lng){
   const e=[]; for(let m=0;m<1440;m++) e.push(pos(m).elev);
   const cross=(th,rising)=>{ for(let m=1;m<1440;m++){ if(rising&&e[m-1]<th&&e[m]>=th) return m; if(!rising&&e[m-1]>=th&&e[m]<th) return m; } return null; };
   return { pos, elev:m=>e[Math.max(0,Math.min(1439,Math.round(m)))],
-    sunrise:cross(-0.833,true), sunset:cross(-0.833,false), dawn:cross(-6,true), dusk:cross(-6,false),
+    sunrise:cross(-0.833,true), sunset:cross(-0.833,false), dawn:cross(-6,true), dusk:cross(-6,false), ballUp:cross(5,true), ballDown:cross(5,false),
     noon: e.indexOf(Math.max(...e)), maxElev: Math.max(...e) };
 }
 const hm=m=> m==null? "–" : `${String(Math.floor(m/60)).padStart(2,"0")}:${String(Math.round(m%60)).padStart(2,"0")}`;
@@ -1804,17 +1807,21 @@ function renderSun(){
   const d=new Date(document.getElementById("sunDate").value+"T12:00:00"); if(isNaN(d)) return;
   const len=parseFloat(document.getElementById("roundLen").value)*60;
   const s=solar(d,c.lat,c.lng);
-  const first=s.dawn, last=s.sunset-len;
+  // earliest realistic tee = sunrise (+ cloud allowance); latest = holed out 15 min before sunset. Civil twilight is too dark to follow a ball.
+  const sky=parseInt(document.getElementById("skySel").value)||0; const MARGIN=15;
+  const first=s.sunrise+sky, finishBy=s.sunset-MARGIN-sky, last=finishBy-len;
   document.getElementById("firstTee").textContent=hm(first);
   document.getElementById("lastTee").textContent=hm(last);
+  document.getElementById("firstTeeNote").textContent=sky?`earliest realistic first tee (sunrise + ${sky} min for cloud)`:"earliest realistic first tee (sunrise)";
+  document.getElementById("lastTeeNote").textContent=`latest tee — holed out by ${hm(finishBy)}, ${MARGIN+sky} min before sunset`;
   document.getElementById("sunrise").textContent=hm(s.sunrise);
   document.getElementById("sunset").textContent=hm(s.sunset);
   // chart
   const W=700,H=200,pad=24; const x=m=>pad+m/1440*(W-2*pad); const y=el=>H-pad-((el+10)/(s.maxElev+10))*(H-2*pad);
-  let g=`<rect x="${x(s.dawn)}" y="0" width="${x(s.dusk)-x(s.dawn)}" height="${H}" fill="#D8C89B" opacity=".35"/>`;
+  let g=`<rect x="${x(first)}" y="0" width="${x(finishBy)-x(first)}" height="${H}" fill="#D8C89B" opacity=".35"/>`;
   // best light band (elev>45)
   let a=null; for(let m=0;m<1440;m++){ const hi=s.elev(m)>45; if(hi&&a===null)a=m; if(!hi&&a!==null){ g+=`<rect x="${x(a)}" y="0" width="${x(m)-x(a)}" height="${H}" fill="#22503C" opacity=".12"/>`; a=null; } }
-  g+=`<rect x="${x(last)}" y="${H-14}" width="${x(s.sunset)-x(last)}" height="10" fill="#B9391F" opacity=".85"/>`;
+  g+=`<rect x="${x(last)}" y="${H-14}" width="${x(finishBy)-x(last)}" height="10" fill="#B9391F" opacity=".85"/>`;
   let path=""; for(let m=0;m<=1440;m+=10){ path+=(m?"L":"M")+x(m).toFixed(1)+","+y(s.elev(m)).toFixed(1)+" "; }
   g+=`<line x1="${pad}" x2="${W-pad}" y1="${y(0)}" y2="${y(0)}" stroke="#5C6B60" stroke-dasharray="3 4"/>`;
   g+=`<path d="${path}" fill="none" stroke="#22503C" stroke-width="2.5"/>`;
@@ -1822,20 +1829,21 @@ function renderSun(){
   g+=`<text x="${x(s.noon)}" y="${y(s.maxElev)-6}" font-size="12" text-anchor="middle" fill="#1B241E">${Math.round(s.maxElev)}° at ${hm(s.noon)}</text>`;
   document.getElementById("sunChart").innerHTML=g;
   // advice
-  const lastEnd=s.sunset; const lastAz=s.pos(lastEnd-60).az; const firstAz=s.pos(first+40).az;
-  const hours=((s.dusk-s.dawn)/60).toFixed(1);
+  const lastEnd=finishBy; const lastAz=s.pos(lastEnd-60).az; const firstAz=s.pos(first+40).az;
+  const hours=((finishBy-first)/60).toFixed(1);
   const tips=[];
-  tips.push(`${hours} h of playable light. First flight ${hm(first)}, last flight ${hm(last)} for a ${len/60} h round finishing at sunset ${hm(s.sunset)}; civil dusk ${hm(s.dusk)} is your real deadline.`);
+  tips.push(`${hours} h of playable light. Earliest flight ${hm(first)}, latest flight ${hm(last)} for a ${len/60} h round holed out by ${hm(finishBy)} (sunset ${hm(s.sunset)}). Comfortable light — sun above 5°, ball flight easy to follow — from ${hm(s.ballUp)} to ${hm(s.ballDown)}; the first and last 25 minutes you play by feel.`);
   if(s.maxElev<40) tips.push(`Low winter sun (max ${Math.round(s.maxElev)}°): the ball flies 3–5 % shorter in cold morning air, and long shadows make reading greens harder after ${hm(s.sunset-90)}.`);
   else if(s.maxElev>65) tips.push(`High summer sun: midday heat costs energy, not distance. Book the first flight or the last; hydrate every third hole in July–August.`);
   tips.push(`In the last hour before sunset the sun sits in the ${compass(lastAz)}; holes running that way have it in your eyes. At the first flight it rises in the ${compass(firstAz)}.`);
   if(last-first<60) tips.push(`Short day: only one realistic flight per group. Everyone wants ${hm(first)}, so book early.`);
+  tips.push(`Civil twilight (${hm(s.dawn)}–${hm(s.sunrise)} and ${hm(s.sunset)}–${hm(s.dusk)}) is bright enough to walk, not to see a ball at 150 m — it is deliberately left out.`);
   document.getElementById("sunAdvice").innerHTML=tips.map(t=>`<div class="advice"><p>${t}</p></div>`).join("");
   // month table
   const tb=document.getElementById("monthTable"); let rows="";
   const y0=d.getFullYear(), m0=d.getMonth(); const dim=new Date(y0,m0+1,0).getDate();
   for(let dd=1;dd<=dim;dd+=3){ const dt=new Date(y0,m0,dd,12); const ss=solar(dt,c.lat,c.lng);
-    rows+=`<tr${dd===d.getDate()?' style="background:#EEF5EC;font-weight:600"':''}><td>${dt.toLocaleDateString(undefined,{day:"numeric",month:"short"})}</td><td>${hm(ss.dawn)}</td><td>${hm(ss.sunrise)}</td><td>${hm(ss.sunset)}</td><td>${hm(ss.sunset-len)}</td><td>${((ss.dusk-ss.dawn)/60).toFixed(1)}</td></tr>`; }
+    rows+=`<tr${dd===d.getDate()?' style="background:#EEF5EC;font-weight:600"':''}><td>${dt.toLocaleDateString(undefined,{day:"numeric",month:"short"})}</td><td>${hm(ss.sunrise+sky)}</td><td>${hm(ss.sunrise)}</td><td>${hm(ss.sunset)}</td><td>${hm(ss.sunset-MARGIN-sky-len)}</td><td>${((ss.sunset-MARGIN-sky-ss.sunrise-sky)/60).toFixed(1)}</td></tr>`; }
   tb.innerHTML=`<thead><tr><th>Date</th><th>First tee</th><th>Sunrise</th><th>Sunset</th><th>Last tee</th><th>Light h</th></tr></thead><tbody>${rows}</tbody>`;
 }
 function compass(az){ const n=["north","north-east","east","south-east","south","south-west","west","north-west"]; return n[Math.round(az/45)%8]; }
@@ -1843,7 +1851,7 @@ function initSun(){
   const sel=document.getElementById("sunCourse");
   if(!sel.options.length){ sel.innerHTML=COURSES.map(c=>`<option value="${c.id}">${c.name}</option>`).join(""); sel.value=state.course;
     document.getElementById("sunDate").value=today();
-    ["sunCourse","sunDate","roundLen"].forEach(id=>document.getElementById(id).addEventListener("change",renderSun)); }
+    ["sunCourse","sunDate","roundLen","skySel"].forEach(id=>document.getElementById(id).addEventListener("change",renderSun)); }
   renderSun();
 }
 
