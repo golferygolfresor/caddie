@@ -2,7 +2,7 @@
 const { chromium } = require('playwright'); const fs=require('fs');
 (async()=>{
   const scenes=JSON.parse(fs.readFileSync('preview/scenes.json','utf8')); fs.mkdirSync('preview/out',{recursive:true});
-  const b=await chromium.launch(); const p=await b.newPage({viewport:{width:390,height:844},deviceScaleFactor:2});
+  const b=await chromium.launch(); const p=await b.newPage({viewport:{width:390,height:844},deviceScaleFactor:2,timezoneId:'Europe/Istanbul',locale:'en-GB'});
   p.on('console',m=>{ if(m.type()==='warning'||m.type()==='error') console.log('PAGE:',m.text().slice(0,200)); });
   for(const sc of scenes){ try {
     await p.goto('http://localhost:8765/index.html');
