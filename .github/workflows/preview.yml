@@ -4,6 +4,8 @@ on:
     branches: [preview]
 permissions:
   contents: write
+env:
+  TZ: Europe/Istanbul
 jobs:
   render:
     runs-on: ubuntu-latest
